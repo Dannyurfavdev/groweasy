@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Pulse - GrowEasy</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body {
+            background: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        /* ---- HEADER (matches manage_projects.html exactly) ---- */
+        .header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* ---- CONTENT CARD (matches manage_projects.html) ---- */
+        .content-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        /* ---- SUMMARY COUNTER CARDS ---- */
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            flex-shrink: 0;
+        }
+
+        .stat-icon.total   { background: #eff6ff; color: #2563eb; }
+        .stat-icon.danger  { background: #fef2f2; color: #dc2626; }
+        .stat-icon.warning { background: #fffbeb; color: #d97706; }
+        .stat-icon.success { background: #f0fdf4; color: #16a34a; }
+
+        .stat-num {
+            font-size: 1.6rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #1e293b;
+        }
+
+        .stat-label {
+            font-size: 0.78rem;
+            color: #64748b;
+            margin-top: 0.15rem;
+        }
+
+        /* ---- SECTION LABELS ---- */
+        .section-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin: 1.5rem 0 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e2e8f0;
+        }
+
+        /* ---- PROJECT RISK CARDS ---- */
+        .project-risk-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 0.75rem;
+            background: white;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .project-risk-card:hover {
+            transform: translateY(-2px);
+            color: inherit;
+        }
+
+        /* Left accent bar */
+        .project-risk-card::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 4px;
+            border-radius: 12px 0 0 12px;
+        }
+
+        /* HIGH RISK */
+        .risk-high {
+            border-color: #fecaca;
+            background: #fff5f5;
+        }
+        .risk-high::before   { background: #dc2626; }
+        .risk-high:hover     { border-color: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.12); }
+
+        /* MEDIUM RISK */
+        .risk-medium {
+            border-color: #fde68a;
+            background: #fffdf0;
+        }
+        .risk-medium::before { background: #d97706; }
+        .risk-medium:hover   { border-color: #d97706; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.12); }
+
+        /* HEALTHY */
+        .risk-healthy {
+            border-color: #bbf7d0;
+            background: #f0fdf4;
+        }
+        .risk-healthy::before { background: #16a34a; }
+        .risk-healthy:hover   { border-color: #16a34a; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.12); }
+
+        /* Score circle */
+        .score-circle {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.05rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            border: 2px solid;
+        }
+
+        .risk-high   .score-circle { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
+        .risk-medium .score-circle { color: #d97706; border-color: #fcd34d; background: #fffbeb; }
+        .risk-healthy .score-circle { color: #16a34a; border-color: #86efac; background: #f0fdf4; }
+
+        .card-project-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 0.2rem;
+        }
+
+        .card-top-signal {
+            font-size: 0.82rem;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 480px;
+        }
+
+        .risk-badge {
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .badge-high    { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+        .badge-medium  { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+        .badge-healthy { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+
+        /* Pulse animation on high risk score circles */
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.3); }
+            50%       { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+        }
+        .risk-high .score-circle { animation: pulse 2.5s infinite; }
+
+        /* ---- EMPTY STATE ---- */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #94a3b8;
+        }
+
+        /* ---- LAST UPDATED BAR ---- */
+        .updated-bar {
+            font-size: 0.78rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #16a34a;
+            display: inline-block;
+            animation: livepulse 2s infinite;
+        }
+
+        @keyframes livepulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ====== HEADER ====== -->
+    <div class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="mb-0">
+                        <i class="bi bi-activity text-danger"></i> Project Risk Pulse
+                    </h1>
+                    <div class="updated-bar mt-1">
+                        <span class="live-dot"></span>
+                        Analyzing last 72 hours of field data &nbsp;·&nbsp;
+                        Updated {{ last_updated|date:"N j, Y — g:i A" }}
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Dashboard
+                    </a>
+                    <button class="btn btn-outline-primary" id="refreshAllBtn">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                    <a href="{% url 'logout' %}" class="btn btn-outline-secondary me-2">
+                        <i class="bi bi-exclamation-triangle"></i> logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- ====== SUMMARY COUNTERS ====== -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-icon total">
+                        <i class="bi bi-building"></i>
+                    </div>
+                    <div>
+                        <div class="stat-num">{{ total_projects }}</div>
+                        <div class="stat-label">Total Projects</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-icon danger">
+                        <i class="bi bi-exclamation-octagon-fill"></i>
+                    </div>
+                    <div>
+                        <div class="stat-num" style="color: #dc2626;">{{ high_count }}</div>
+                        <div class="stat-label">High Risk</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-icon warning">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                    </div>
+                    <div>
+                        <div class="stat-num" style="color: #d97706;">{{ medium_count }}</div>
+                        <div class="stat-label">Needs Attention</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-icon success">
+                        <i class="bi bi-check-circle-fill"></i>
+                    </div>
+                    <div>
+                        <div class="stat-num" style="color: #16a34a;">{{ healthy_count }}</div>
+                        <div class="stat-label">On Track</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== PROJECT CARDS ====== -->
+        {% if project_risks %}
+
+            {% if high_count > 0 %}
+            <div class="section-label">
+                <i class="bi bi-exclamation-octagon-fill text-danger"></i>
+                Immediate Attention Required
+            </div>
+            {% for item in project_risks %}
+                {% if item.risk_level == 'high' %}
+                <a href="{% url 'risk_detail' item.project.id %}" class="project-risk-card risk-high">
+                    <div class="score-circle">{{ item.score }}</div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="card-project-name">
+                            <i class="bi bi-building-fill text-danger me-1" style="font-size:0.9rem;"></i>
+                            {{ item.project.name }}
+                        </div>
+                        <div class="card-top-signal">{{ item.top_signal }}</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        <span class="risk-badge badge-high">🔴 High Risk</span>
+                        <i class="bi bi-chevron-right text-muted" style="font-size:0.8rem;"></i>
+                    </div>
+                </a>
+                {% endif %}
+            {% endfor %}
+            {% endif %}
+
+            {% if medium_count > 0 %}
+            <div class="section-label">
+                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                Monitor Closely
+            </div>
+            {% for item in project_risks %}
+                {% if item.risk_level == 'medium' %}
+                <a href="{% url 'risk_detail' item.project.id %}" class="project-risk-card risk-medium">
+                    <div class="score-circle">{{ item.score }}</div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="card-project-name">
+                            <i class="bi bi-building-fill text-warning me-1" style="font-size:0.9rem;"></i>
+                            {{ item.project.name }}
+                        </div>
+                        <div class="card-top-signal">{{ item.top_signal }}</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        <span class="risk-badge badge-medium">🟡 Medium Risk</span>
+                        <i class="bi bi-chevron-right text-muted" style="font-size:0.8rem;"></i>
+                    </div>
+                </a>
+                {% endif %}
+            {% endfor %}
+            {% endif %}
+
+            {% if healthy_count > 0 %}
+            <div class="section-label">
+                <i class="bi bi-check-circle-fill text-success"></i>
+                On Track
+            </div>
+            {% for item in project_risks %}
+                {% if item.risk_level == 'healthy' %}
+                <a href="{% url 'risk_detail' item.project.id %}" class="project-risk-card risk-healthy">
+                    <div class="score-circle">{{ item.score }}</div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="card-project-name">
+                            <i class="bi bi-building-fill text-success me-1" style="font-size:0.9rem;"></i>
+                            {{ item.project.name }}
+                        </div>
+                        <div class="card-top-signal">{{ item.top_signal }}</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        <span class="risk-badge badge-healthy">🟢 Healthy</span>
+                        <i class="bi bi-chevron-right text-muted" style="font-size:0.8rem;"></i>
+                    </div>
+                </a>
+                {% endif %}
+            {% endfor %}
+            {% endif %}
+
+        {% else %}
+            <div class="content-card">
+                <div class="empty-state">
+                    <i class="bi bi-inbox" style="font-size: 4rem; color: #cbd5e1;"></i>
+                    <h4 class="mt-3 text-muted">No Projects Found</h4>
+                    <p class="text-muted">Create a project and add contacts to start tracking risk.</p>
+                    <a href="{% url 'manage_projects' %}" class="btn btn-primary mt-2">
+                        <i class="bi bi-plus-circle"></i> Create a Project
+                    </a>
+                </div>
+            </div>
+        {% endif %}
+
+    </div><!-- /container -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    document.getElementById('refreshAllBtn').addEventListener('click', async function () {
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Recalculating...';
+    
+        try {
+            const resp = await fetch('/risk/run-all/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            });
+    
+            const data = await resp.json();
+    
+            if (data.success) {
+                this.innerHTML = '<i class="bi bi-check-circle-fill me-1 text-success"></i> Done!';
+                setTimeout(() => window.location.reload(), 800);
+            }
+        } catch(e) {
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh';
+        }
+    });
+    
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    </script>
+
+<script>const GROWEASY_PROJECT_ID = {{ project.id }};</script>
+<script src="/static/js/notifications.js/"></script>
+</body>
+</html>

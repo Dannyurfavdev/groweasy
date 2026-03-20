@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Data Sources - GrowEasy</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <style>
+        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 0; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .content-card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+        .source-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .badge-sheet { background: #dcfce7; color: #166534; }
+        .badge-drive { background: #dbeafe; color: #1e40af; }
+        .alert-custom { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: none; }
+        .nav-tabs .nav-link { color: #64748b; font-weight: 500; }
+        .nav-tabs .nav-link.active { color: #2563eb; border-bottom: 2px solid #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="mb-0"><i class="bi bi-database-fill text-primary"></i> Manage Data Sources</h1>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Alert Messages -->
+        <div id="alert-success" class="alert alert-success alert-custom">
+            <i class="bi bi-check-circle"></i> <span id="success-message"></span>
+        </div>
+        <div id="alert-error" class="alert alert-danger alert-custom">
+            <i class="bi bi-exclamation-triangle"></i> <span id="error-message"></span>
+        </div>
+
+        <div class="row">
+            <!-- Add Data Source Forms -->
+            <div class="col-md-5">
+                <div class="content-card">
+                    <h3 class="mb-4"><i class="bi bi-plus-circle"></i> Add Data Source</h3>
+                    
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs mb-4" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#sheet-tab">
+                                <i class="bi bi-file-earmark-spreadsheet"></i> Google Sheet
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#drive-tab">
+                                <i class="bi bi-folder"></i> Google Drive
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <!-- Google Sheet Form -->
+                        <div class="tab-pane fade show active" id="sheet-tab">
+                            <form id="addSheetForm">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="source_type" value="GSHEET">
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Project</label>
+                                    <select name="project_id" class="form-select" required>
+                                        {% for project in all_projects %}
+                                        <option value="{{ project.id }}" {% if project.id == current_project.id %}selected{% endif %}>
+                                            {{ project.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Name</label>
+                                    <input type="text" name="name" class="form-control" 
+                                           placeholder="Bid Tracker" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Sheet ID</label>
+                                    <input type="text" name="sheet_id" class="form-control" 
+                                           placeholder="1LK_bTkKoG6tbUyeAr-upVtbiGWzZAF8Vikz0l8i7a7s" required>
+                                    <small class="text-muted">From URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Tab Name</label>
+                                    <input type="text" name="sheet_name" class="form-control" 
+                                           value="Sheet1">
+                                </div>
+
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="bi bi-plus-circle"></i> Add Google Sheet
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Google Drive Form -->
+                        <div class="tab-pane fade" id="drive-tab">
+                            <form id="addDriveForm">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="source_type" value="GDRIVE">
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Project</label>
+                                    <select name="project_id" class="form-select" required>
+                                        {% for project in all_projects %}
+                                        <option value="{{ project.id }}" {% if project.id == current_project.id %}selected{% endif %}>
+                                            {{ project.name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Name</label>
+                                    <input type="text" name="name" class="form-control" 
+                                           placeholder="Project Documents" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Folder ID</label>
+                                    <input type="text" name="folder_id" class="form-control" 
+                                           placeholder="1XYZ123ABC456" required>
+                                    <small class="text-muted">From URL: drive.google.com/drive/folders/<strong>FOLDER_ID</strong></small>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-plus-circle"></i> Add Google Drive Folder
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Card -->
+                <div class="content-card">
+                    <h5><i class="bi bi-info-circle text-info"></i> Setup Instructions</h5>
+                    <ol class="mb-0">
+                        <li>Share your Google Sheet/Drive folder with:<br>
+                            <code>first-service-account@helpful-topic-469715-r2.iam.gserviceaccount.com</code>
+                        </li>
+                        <li>Copy the Sheet ID or Folder ID from the URL</li>
+                        <li>Add it here and click sync</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Data Sources List -->
+            <div class="col-md-7">
+                <div class="content-card">
+                    <h3 class="mb-4"><i class="bi bi-list-ul"></i> All Data Sources ({{ all_sources.count }})</h3>
+                    
+                    {% if all_sources %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Project</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for source in all_sources %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ source.name }}</strong><br>
+                                            <small class="text-muted">
+                                                {% if source.source_type == 'GSHEET' %}
+                                                    <code>{{ source.sheet_id|truncatechars:20 }}</code>
+                                                {% else %}
+                                                    <code>{{ source.folder_id|truncatechars:20 }}</code>
+                                                {% endif %}
+                                            </small>
+                                        </td>
+                                        <td>
+                                            {% if source.source_type == 'GSHEET' %}
+                                                <span class="source-badge badge-sheet">
+                                                    <i class="bi bi-file-earmark-spreadsheet"></i> Sheet
+                                                </span>
+                                            {% else %}
+                                                <span class="source-badge badge-drive">
+                                                    <i class="bi bi-folder"></i> Drive
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ source.project.name }}</td>
+                                        <td>
+                                            {% if source.is_active %}
+                                                <span class="badge bg-success">Active</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Inactive</span>
+                                            {% endif %}
+                                            {% if source.last_synced %}
+                                                <br><small class="text-muted">{{ source.last_synced|timesince }} ago</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary sync-btn" 
+                                                        data-source-id="{{ source.id }}"
+                                                        title="Sync Now">
+                                                    <i class="bi bi-arrow-clockwise"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary toggle-btn" 
+                                                        data-source-id="{{ source.id }}"
+                                                        title="Toggle Active">
+                                                    <i class="bi bi-toggle-{% if source.is_active %}on{% else %}off{% endif %}"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger delete-btn" 
+                                                        data-source-id="{{ source.id }}"
+                                                        data-name="{{ source.name }}">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox" style="font-size: 3rem; color: #cbd5e1;"></i>
+                            <p class="text-muted mt-3">No data sources yet. Add your first Sheet or Drive folder above!</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // Add Sheet Form
+        document.getElementById('addSheetForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await submitForm(e.target);
+        });
+
+        // Add Drive Form
+        document.getElementById('addDriveForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await submitForm(e.target);
+        });
+
+        async function submitForm(form) {
+            const formData = new FormData(form);
+            
+            try {
+                const response = await fetch('{% url "manage_data_sources" %}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', data.message);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('error', data.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Error: ' + error);
+            }
+        }
+
+        // Sync Button
+        document.querySelectorAll('.sync-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sourceId = e.currentTarget.dataset.sourceId;
+                e.currentTarget.disabled = true;
+                e.currentTarget.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                
+                const formData = new FormData();
+                formData.append('action', 'sync');
+                formData.append('source_id', sourceId);
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                
+                try {
+                    const response = await fetch('{% url "manage_data_sources" %}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        showAlert('error', data.message);
+                        e.currentTarget.disabled = false;
+                        e.currentTarget.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+                    }
+                } catch (error) {
+                    showAlert('error', 'Error: ' + error);
+                    e.currentTarget.disabled = false;
+                    e.currentTarget.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+                }
+            });
+        });
+
+        // Toggle Active
+        document.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sourceId = e.currentTarget.dataset.sourceId;
+                
+                const formData = new FormData();
+                formData.append('action', 'toggle');
+                formData.append('source_id', sourceId);
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                
+                try {
+                    const response = await fetch('{% url "manage_data_sources" %}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert('error', data.message);
+                    }
+                } catch (error) {
+                    showAlert('error', 'Error: ' + error);
+                }
+            });
+        });
+
+        // Delete Button
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sourceId = e.currentTarget.dataset.sourceId;
+                const sourceName = e.currentTarget.dataset.name;
+                
+                if (!confirm(`Remove ${sourceName}?`)) return;
+                
+                const formData = new FormData();
+                formData.append('action', 'delete');
+                formData.append('source_id', sourceId);
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                
+                try {
+                    const response = await fetch('{% url "manage_data_sources" %}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert('error', data.message);
+                    }
+                } catch (error) {
+                    showAlert('error', 'Error: ' + error);
+                }
+            });
+        });
+
+        function showAlert(type, message) {
+            const alertEl = document.getElementById(`alert-${type}`);
+            const messageEl = document.getElementById(`${type}-message`);
+            
+            messageEl.textContent = message;
+            alertEl.style.display = 'block';
+            
+            setTimeout(() => {
+                alertEl.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

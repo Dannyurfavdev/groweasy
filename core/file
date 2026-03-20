@@ -1,0 +1,7 @@
+
+
+# NOW queue async AI processing (after transcription is done)
+try:
+    process_message_async.delay(msg.id)
+except Exception as e:
+    # ... rest of your code

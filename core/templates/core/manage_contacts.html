@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Contacts - GrowEasy</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <style>
+        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 0; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .content-card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .project-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.875rem; font-weight: 600; }
+        .alert-custom { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="mb-0"><i class="bi bi-people-fill text-primary"></i> Manage Contacts</h1>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Alert Messages -->
+        <div id="alert-success" class="alert alert-success alert-custom">
+            <i class="bi bi-check-circle"></i> <span id="success-message"></span>
+        </div>
+        <div id="alert-error" class="alert alert-danger alert-custom">
+            <i class="bi bi-exclamation-triangle"></i> <span id="error-message"></span>
+        </div>
+
+        <div class="row">
+            <!-- Add Contact Form -->
+            <div class="col-md-5">
+                <div class="content-card">
+                    <h3 class="mb-4"><i class="bi bi-person-plus"></i> Add Contact</h3>
+                    <form id="addContactForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Project</label>
+                            <select name="project_id" class="form-select" required>
+                                {% for project in all_projects %}
+                                <option value="{{ project.id }}" {% if project.id == current_project.id %}selected{% endif %}>
+                                    {{ project.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Phone Number</label>
+                            <input type="text" name="phone_number" class="form-control" 
+                                   placeholder="+2347068392922" required
+                                   pattern="\+?[0-9]{10,15}">
+                            <small class="text-muted">Include country code (e.g., +234...)</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Contact Name</label>
+                            <input type="text" name="contact_name" class="form-control" 
+                                   placeholder="Mike Johnson" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Role (Optional)</label>
+                            <input type="text" name="role" class="form-control" 
+                                   placeholder="Superintendent">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-plus-circle"></i> Add Contact
+                        </button>
+                    </form>
+                </div>
+
+                <div class="content-card mt-3">
+                    <h5><i class="bi bi-info-circle text-info"></i> How It Works</h5>
+                    <p class="mb-0">When someone sends a WhatsApp message, GrowEasy automatically routes it to their assigned project based on their phone number.</p>
+                    <hr>
+                    <p class="text-muted mb-0"><strong>Your WhatsApp:</strong> +2347068392922</p>
+                </div>
+            </div>
+
+            <!-- Contacts List -->
+            <div class="col-md-7">
+                <div class="content-card">
+                    <h3 class="mb-4"><i class="bi bi-list-ul"></i> All Contacts ({{ all_contacts.count }})</h3>
+                    
+                    {% if all_contacts %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Phone</th>
+                                        <th>Role</th>
+                                        <th>Project</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for contact in all_contacts %}
+                                    <tr>
+                                        <td><strong>{{ contact.contact_name }}</strong></td>
+                                        <td><code>{{ contact.phone_number }}</code></td>
+                                        <td>{{ contact.role|default:"—" }}</td>
+                                        <td>
+                                            <span class="project-badge" style="background: #dbeafe; color: #1e40af;">
+                                                {{ contact.project.name }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                                    data-contact-id="{{ contact.id }}"
+                                                    data-name="{{ contact.contact_name }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox" style="font-size: 3rem; color: #cbd5e1;"></i>
+                            <p class="text-muted mt-3">No contacts yet. Add your first contact above!</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Add Contact Form
+        document.getElementById('addContactForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            
+            try {
+                const response = await fetch('{% url "manage_contacts" %}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', data.message);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('error', data.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Error adding contact: ' + error);
+            }
+        });
+
+        // Delete Contact
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const contactId = e.currentTarget.dataset.contactId;
+                const contactName = e.currentTarget.dataset.name;
+                
+                if (!confirm(`Remove ${contactName}?`)) return;
+                
+                const formData = new FormData();
+                formData.append('action', 'delete');
+                formData.append('contact_id', contactId);
+                formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+                
+                try {
+                    const response = await fetch('{% url "manage_contacts" %}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert('error', data.message);
+                    }
+                } catch (error) {
+                    showAlert('error', 'Error deleting contact: ' + error);
+                }
+            });
+        });
+
+        function showAlert(type, message) {
+            const alertEl = document.getElementById(`alert-${type}`);
+            const messageEl = document.getElementById(`${type}-message`);
+            
+            messageEl.textContent = message;
+            alertEl.style.display = 'block';
+            
+            setTimeout(() => {
+                alertEl.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,477 @@
+
+# core/ai_processor.py - Fallback version without OpenAI
+import re
+from transformers import pipeline
+
+# Load sentiment analyzer once at startup
+try:
+    sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+except Exception as e:
+    print(f"Warning: Could not load sentiment analyzer: {e}")
+    sentiment_analyzer = None
+
+
+def analyze_sentiment(message_text):
+    """Basic sentiment analysis with construction-aware fallback"""
+    
+    # Construction-specific positive/negative keywords
+    positive_keywords = [
+        'complete', 'completed', 'done', 'finished', 'ready', 'passed', 
+        'approved', 'good', 'great', 'perfect', 'success', 'excellent',
+        'on schedule', 'ahead', 'progress', 'installed', 'delivered'
+    ]
+    
+    negative_keywords = [
+        'delay', 'delayed', 'problem', 'issue', 'rain', 'weather', 
+        'behind', 'late', 'waiting', 'failed', 'reject', 'unsafe',
+        'postpone', 'reschedule', 'cancel', 'shortage', 'missing'
+    ]
+    
+    text_lower = message_text.lower()
+    
+    # Count keyword matches
+    pos_count = sum(1 for word in positive_keywords if word in text_lower)
+    neg_count = sum(1 for word in negative_keywords if word in text_lower)
+    
+    # Use transformers as secondary check if available
+    transformer_sentiment = None
+    transformer_score = 0.5
+    
+    if sentiment_analyzer:
+        try:
+            result = sentiment_analyzer(message_text[:512])
+            transformer_sentiment = result[0]['label']
+            transformer_score = result[0]['score']
+        except Exception as e:
+            print(f"Transformer sentiment error: {e}")
+    
+    # Decision logic: keyword matching takes priority for construction text
+    if pos_count > neg_count:
+        return 'POSITIVE', max(0.85, transformer_score if transformer_sentiment == 'POSITIVE' else 0.85)
+    elif neg_count > pos_count:
+        return 'NEGATIVE', max(0.85, transformer_score if transformer_sentiment == 'NEGATIVE' else 0.85)
+    else:
+        # No clear keywords - use transformer if available
+        if transformer_sentiment:
+            return transformer_sentiment, transformer_score
+        else:
+            return 'NEUTRAL', 0.70
+
+
+def extract_construction_intel(message_text):
+    """
+    Extract construction info using keyword matching and patterns
+    Returns dict with extracted info
+    """
+    text_lower = message_text.lower()
+    
+    # Trade detection with keywords
+    trade_keywords = {
+        'Electrical': ['electrical', 'electric', 'wiring', 'wire', 'power', 'voltage', 'circuit', 'breaker'],
+        'Plumbing': ['plumbing', 'plumber', 'pipe', 'pipes', 'water', 'drain', 'sewer', 'fixture'],
+        'HVAC': ['hvac', 'heating', 'cooling', 'air conditioning', 'ventilation', 'ac unit', 'furnace', 'duct'],
+        'Concrete': ['concrete', 'pour', 'foundation', 'slab', 'cement', 'footing'],
+        'Framing': ['framing', 'frame', 'lumber', 'wood', 'stud', 'joist', 'beam'],
+        'Drywall': ['drywall', 'sheetrock', 'gypsum', 'taping', 'mudding'],
+        'Roofing': ['roof', 'roofing', 'shingle', 'shingles', 'flashing'],
+        'Masonry': ['brick', 'masonry', 'block', 'stone', 'mortar'],
+        'Painting': ['paint', 'painting', 'primer', 'coating'],
+        'Flooring': ['floor', 'flooring', 'tile', 'carpet', 'hardwood'],
+    }
+    
+    detected_trade = ''
+    for trade, keywords in trade_keywords.items():
+        if any(keyword in text_lower for keyword in keywords):
+            detected_trade = trade
+            break
+    
+    # Location detection with patterns
+    location_patterns = [
+        r'floor\s*(\d+)',
+        r'(\d+)(?:st|nd|rd|th)\s*floor',
+        r'level\s*(\d+)',
+        r'(basement|ground floor|roof|rooftop|exterior|interior)',
+        r'(building\s*[a-z]|unit\s*\d+)',
+        r'(north|south|east|west)\s*(side|wing|section)',
+    ]
+    
+    detected_location = ''
+    for pattern in location_patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            detected_location = match.group(0).title()
+            break
+    
+    # Delay detection
+    delay_keywords = ['delay', 'delayed', 'behind', 'late', 'waiting', 'postpone', 'reschedule', 'rain', 'weather', 'storm']
+    is_delay = any(keyword in text_lower for keyword in delay_keywords)
+    
+    # Delay reason extraction
+    delay_reason = ''
+    if is_delay:
+        reason_patterns = {
+            'rain': r'(rain|raining|rainy|rainfall)',
+            'weather': r'(weather|storm|wind|snow)',
+            'equipment': r'(equipment|machine|tool|delivery)',
+            'material': r'(material|supply|supplies)',
+            'inspection': r'(inspection|permit|approval)',
+            'labor': r'(crew|worker|staff|manpower)',
+        }
+        
+        for reason, pattern in reason_patterns.items():
+            if re.search(pattern, text_lower):
+                delay_reason = f"{reason.title()} related delay"
+                break
+        
+        if not delay_reason:
+            delay_reason = "Schedule delay"
+    
+    # Generate summary
+    if is_delay:
+        summary = f"{detected_trade or 'Work'} delayed. {delay_reason}"
+    elif any(word in text_lower for word in ['complete', 'done', 'finished']):
+        summary = f"{detected_trade or 'Work'} completed at {detected_location or 'site'}"
+    else:
+        summary = message_text[:100]
+    
+    return {
+        "trade": detected_trade,
+        "location": detected_location,
+        "is_delay": is_delay,
+        "delay_reason": delay_reason,
+        "summary": summary
+    }
+
+
+def transcribe_voice_note(audio_file_path):
+    """
+    Placeholder for voice transcription
+    In production, you'd use Whisper API or similar
+    """
+    print(f"Voice transcription not available in fallback mode: {audio_file_path}")
+    return "Voice note received (transcription requires OpenAI Whisper API)"
+
+
+def describe_image(image_url_or_path):
+    """
+    Placeholder for image description
+    In production, you'd use GPT-4 Vision
+    """
+    # Try to extract info from filename if possible
+    filename = image_url_or_path.split('/')[-1].lower()
+    
+    description_parts = []
+    
+    # Check filename for trade keywords
+    if any(word in filename for word in ['electrical', 'electric', 'wire']):
+        description_parts.append("Electrical work")
+    elif any(word in filename for word in ['plumb', 'pipe']):
+        description_parts.append("Plumbing work")
+    elif any(word in filename for word in ['concrete', 'pour']):
+        description_parts.append("Concrete work")
+    elif any(word in filename for word in ['frame', 'framing']):
+        description_parts.append("Framing work")
+    else:
+        description_parts.append("Construction site")
+    
+    # Check for location in filename
+    floor_match = re.search(r'floor[_\-\s]*(\d+)', filename)
+    if floor_match:
+        description_parts.append(f"Floor {floor_match.group(1)}")
+    
+    description = " - ".join(description_parts) if description_parts else "Construction site photo"
+    return description
+
+
+def detect_weather_delay(message_text):
+    """Quick check for weather-related delays"""
+    weather_keywords = ['rain', 'weather', 'storm', 'snow', 'wind', 'flood', 'wet', 'lightning', 'thunder']
+    text_lower = message_text.lower()
+    return any(keyword in text_lower for keyword in weather_keywords)
+
+
+def suggest_related_documents(message_text, available_docs):
+    """
+    Suggest relevant documents based on keyword matching
+    """
+    if not available_docs:
+        return []
+    
+    text_lower = message_text.lower()
+    
+    # Extract keywords from message
+    keywords = []
+    
+    # Add trade keywords
+    trade_keywords = ['electrical', 'plumbing', 'hvac', 'concrete', 'framing', 'roof']
+    keywords.extend([k for k in trade_keywords if k in text_lower])
+    
+    # Add document type keywords
+    doc_keywords = ['permit', 'plan', 'drawing', 'contract', 'invoice', 'schedule', 'spec', 'submittal']
+    keywords.extend([k for k in doc_keywords if k in text_lower])
+    
+    if not keywords:
+        return []
+    
+    # Score each document based on keyword matches
+    scored_docs = []
+    for doc in available_docs:
+        doc_name_lower = doc['name'].lower()
+        score = sum(1 for keyword in keywords if keyword in doc_name_lower)
+        if score > 0:
+            scored_docs.append((score, doc))
+    
+    # Sort by score and return top 3
+    scored_docs.sort(reverse=True, key=lambda x: x[0])
+    return [doc for score, doc in scored_docs[:3]]
+
+
+def generate_dashboard_summary(recent_messages, sheet_data):
+    """
+    Create executive summary using pattern analysis
+    """
+    if not recent_messages:
+        return "No recent activity."
+    
+    # Count delays
+    delay_count = sum(1 for msg in recent_messages if 
+                     any(word in msg.get('body', '').lower() for word in ['delay', 'delayed', 'behind']))
+    
+    # Count completions
+    completion_count = sum(1 for msg in recent_messages if 
+                          any(word in msg.get('body', '').lower() for word in ['complete', 'done', 'finished']))
+    
+    # Identify active trades
+    all_text = ' '.join([msg.get('body', '') for msg in recent_messages]).lower()
+    active_trades = []
+    trade_keywords = {
+        'Electrical': ['electrical', 'electric'],
+        'Plumbing': ['plumbing', 'plumber'],
+        'HVAC': ['hvac', 'heating', 'cooling'],
+        'Concrete': ['concrete', 'pour'],
+    }
+    
+    for trade, keywords in trade_keywords.items():
+        if any(k in all_text for k in keywords):
+            active_trades.append(trade)
+    
+    # Generate summary
+    summary_parts = []
+    
+    if completion_count > 0:
+        summary_parts.append(f"{completion_count} task{'s' if completion_count > 1 else ''} completed")
+    
+    if delay_count > 0:
+        summary_parts.append(f"{delay_count} delay{'s' if delay_count > 1 else ''} reported")
+    
+    if active_trades:
+        summary_parts.append(f"Active: {', '.join(active_trades[:3])}")
+    
+    if sheet_data:
+        summary_parts.append(f"{len(sheet_data)} budget items tracked")
+    
+    if summary_parts:
+        return ". ".join(summary_parts) + "."
+    else:
+        return "Recent activity tracked. Check dashboard for details."
+
+
+
+
+
+
+
+'''
+# New core/ai_processor.py
+
+from openai import OpenAI
+import json
+from django.conf import settings
+from transformers import pipeline
+
+# Load once at startup
+sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+
+# Initialize OpenAI client
+client = OpenAI(api_key=getattr(settings, 'OPENAI_API_KEY', ''))
+
+
+def analyze_sentiment(message_text):
+    """Basic sentiment analysis"""
+    try:
+        result = sentiment_analyzer(message_text[:512])
+        return result[0]['label'], result[0]['score']
+    except Exception as e:
+        print(f"Sentiment analysis error: {e}")
+        return 'NEUTRAL', 0.5
+
+
+def extract_construction_intel(message_text):
+    """
+    Use AI to extract: trade, location, delays, and relevance
+    Returns dict with extracted info
+    """
+    prompt = f"""Analyze this construction site message and extract:
+1. Trade/discipline (Electrical, Plumbing, HVAC, Concrete, Framing, etc.)
+2. Location on site (if mentioned)
+3. Is this a delay? (yes/no)
+4. If delay, what's the reason?
+5. Key action items or status updates
+
+Message: "{message_text}"
+
+Respond ONLY with valid JSON:
+{{
+  "trade": "trade name or empty string",
+  "location": "location or empty string", 
+  "is_delay": true/false,
+  "delay_reason": "reason or empty string",
+  "summary": "one sentence summary"
+}}"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+            temperature=0.3
+        )
+        
+        result_text = response.choices[0].message.content.strip()
+        # Remove markdown code fences if present
+        result_text = result_text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(result_text)
+        
+        # Ensure empty strings instead of None
+        return {
+            "trade": data.get('trade') or '',
+            "location": data.get('location') or '',
+            "is_delay": data.get('is_delay', False),
+            "delay_reason": data.get('delay_reason') or '',
+            "summary": data.get('summary') or message_text[:100]
+        }
+    
+    except Exception as e:
+        print(f"AI extraction error: {e}")
+        # Return safe defaults instead of None
+        return {
+            "trade": '',
+            "location": '',
+            "is_delay": False,
+            "delay_reason": '',
+            "summary": message_text[:100]
+        }
+
+
+def transcribe_voice_note(audio_file_path):
+    """Transcribe voice notes using Whisper API"""
+    try:
+        with open(audio_file_path, 'rb') as audio_file:
+            response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        return response.text
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        return ""
+
+
+def describe_image(image_url_or_path):
+    """Generate description of construction photo using GPT-4 Vision"""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4-vision-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Describe this construction site image. Identify: trade/work type, location if visible, quality/completion status, any issues."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url_or_path}
+                        }
+                    ]
+                }
+            ],
+            max_tokens=200
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Image description error: {e}")
+        return "Photo uploaded"
+
+
+def detect_weather_delay(message_text):
+    """Quick check for weather-related delays"""
+    weather_keywords = ['rain', 'weather', 'storm', 'snow', 'wind', 'flood', 'wet', 'delay']
+    text_lower = message_text.lower()
+    return any(keyword in text_lower for keyword in weather_keywords)
+
+
+def suggest_related_documents(message_text, available_docs):
+    """Use AI to suggest which docs from Drive are relevant to this message"""
+    if not available_docs:
+        return []
+    
+    doc_list = "\n".join([f"- {doc['name']} ({doc['type']})" for doc in available_docs[:20]])
+    
+    prompt = f"""Given this construction message:
+"{message_text}"
+
+Which of these documents are most relevant? List up to 3 document names:
+{doc_list}
+
+Respond with JSON array of document names: ["doc1.pdf", "doc2.xlsx"]"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100,
+            temperature=0.2
+        )
+        
+        result_text = response.choices[0].message.content.strip()
+        result_text = result_text.replace('```json', '').replace('```', '').strip()
+        suggested_names = json.loads(result_text)
+        
+        # Return matching doc objects
+        return [doc for doc in available_docs if doc['name'] in suggested_names]
+    
+    except Exception as e:
+        print(f"Document suggestion error: {e}")
+        return []
+
+
+def generate_dashboard_summary(recent_messages, sheet_data):
+    """Create executive summary of recent activity"""
+    message_texts = "\n".join([f"- {msg['body']}" for msg in recent_messages[:10]])
+    
+    prompt = f"""Summarize the current construction project status based on:
+
+Recent Messages:
+{message_texts}
+
+Sheet Data Summary: {len(sheet_data)} rows of bid/cost data
+
+Provide a 2-3 sentence executive summary highlighting:
+- Overall progress
+- Any delays or issues
+- Key metrics"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Summary generation error: {e}")
+        return "Recent activity tracked. Check details below."
+
+'''

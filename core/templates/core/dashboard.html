@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrowEasy - {{ project.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        
+        body {
+            background: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+        }
+        
+        .stat-label {
+            color: #64748b;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .alert-card {
+            border-left: 4px solid var(--danger);
+            background: #fef2f2;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .alert-card.weather {
+            border-left-color: var(--warning);
+            background: #fffbeb;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .message-item {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-left: 3px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+        
+        .message-item:hover {
+            border-left-color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .message-item.positive {
+            border-left-color: var(--success);
+        }
+        
+        .message-item.negative {
+            border-left-color: var(--danger);
+        }
+        
+        .badge-trade {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .badge-location {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        
+        .photo-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .photo-item:hover {
+            transform: scale(1.05);
+        }
+        
+        .photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .photo-tag {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .export-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .export-btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+        
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .suggested-doc {
+            background: #fef3c7;
+            border: 2px solid #fbbf24;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+        
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            animation: blink 2s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+        
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <h1 class="mb-0">
+                        <i class="bi bi-building text-primary"></i>
+                        GrowEasy
+                    </h1>
+                </div>
+                <div class="col-md-8 text-end">
+                    <!-- Project Switcher -->
+                    <div class="btn-group me-2">
+                        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="bi bi-briefcase"></i> {{ project.name }}
+                        </button>
+                        <ul class="dropdown-menu">
+                            {% for proj in all_projects %}
+                            <li>
+                                <a class="dropdown-item {% if proj.id == project.id %}active{% endif %}" 
+                                   href="{% url 'switch_project' proj.id %}">
+                                    <i class="bi bi-building"></i> {{ proj.name }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <!-- Manage Projects Button -->
+                    <a href="{% url 'manage_projects' %}" class="btn btn-outline-primary me-2">
+                        <i class="bi bi-building"></i> Projects
+                    </a>
+                    
+                    <!-- Manage Contacts Button -->
+                    <a href="{% url 'manage_contacts' %}" class="btn btn-outline-secondary me-2">
+                        <i class="bi bi-people"></i> Contacts
+                    </a>
+                    
+                    <!-- Manage Data Sources Button -->
+                    <a href="{% url 'manage_data_sources' %}" class="btn btn-outline-secondary me-2">
+                        <i class="bi bi-database"></i> Data Sources
+                    </a>
+                    
+                    <!-- See Risk Overview -->
+                    <a href="{% url 'risk_overview' %}" class="btn btn-outline-secondary me-2">
+                        <i class="bi bi-activity"></i> Risk Overview
+                    </a>
+                    
+                    <!-- Add this: -->
+                    
+                    <button class="btn btn-outline-success me-2" onclick="syncData()">
+                        <i class="bi bi-cloud-download"></i> Sync Data
+                    </button>
+                    
+                    <button class="btn btn-outline-primary me-2" onclick="location.reload()">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+
+                    <a href="{% url 'export_data' %}" class="export-btn">
+                        <i class="bi bi-download"></i> Export CSV
+                    </a>
+                    
+                    <a href="{% url 'logout' %}" class="btn btn-outline-secondary me-2">
+                        <i class="bi bi-exclamation-triangle"></i> logout
+                    </a>
+
+                    <!-- Replace the simple Export CSV button with this -->
+                    <!--
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#exportModal">
+                        <i class="bi bi-download"></i> Export Data
+                    </button>
+                    -->
+
+                    <!-- Export Options Modal -->
+                    <!--
+                    <div class="modal fade" id="exportModal" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title"><i class="bi bi-download"></i> Export Data</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <form id="exportForm" action="{% url 'export_data' %}" method="get">
+                                        <div class="mb-3">
+                                            <label class="form-label">What to Export</label>
+                                            <select name="type" class="form-select">
+                                                <option value="all">Everything (Messages, Files, Alerts)</option>
+                                                <option value="messages">Messages Only</option>
+                                                <option value="files">Files Only</option>
+                                                <option value="alerts">Alerts Only</option>
+                                                <option value="recent">Recent (Last 30 Days)</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">Date Range (Optional)</label>
+                                            <div class="row">
+                                                <div class="col">
+                                                    <input type="date" name="date_from" class="form-control" placeholder="From">
+                                                </div>
+                                                <div class="col">
+                                                    <input type="date" name="date_to" class="form-control" placeholder="To">
+                                                </div>
+                                            </div>
+                                            <small class="text-muted">Leave blank to export all dates</small>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">Limit (Optional)</label>
+                                            <select name="limit" class="form-select">
+                                                <option value="">No Limit (All Records)</option>
+                                                <option value="100">Last 100 Records</option>
+                                                <option value="500">Last 500 Records</option>
+                                                <option value="1000">Last 1,000 Records</option>
+                                                <option value="5000">Last 5,000 Records</option>
+                                            </select>
+                                            <small class="text-muted">Recommended for large projects</small>
+                                        </div>
+                                        
+                                        <div class="alert alert-info">
+                                            <i class="bi bi-info-circle"></i>
+                                            <strong>Current Project:</strong> {{ project.name }}<br>
+                                            <strong>Total Messages:</strong> {{ total_messages }}
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" onclick="document.getElementById('exportForm').submit()">
+                                        <i class="bi bi-download"></i> Export CSV
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        <!-- Stats Overview -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="bi bi-chat-dots"></i> Messages
+                    </div>
+                    <div class="stat-value text-primary">{{ total_messages }}</div>
+                    <small class="text-muted">Last 24 hours</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="bi bi-emoji-smile"></i> Positive
+                    </div>
+                    <div class="stat-value text-success">{{ sentiment_percent|floatformat:0 }}%</div>
+                    <small class="text-muted">{{ positive_count }} messages</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="bi bi-exclamation-triangle"></i> Alerts
+                    </div>
+                    <div class="stat-value text-danger">{{ alerts.count }}</div>
+                    <small class="text-muted">Requires attention</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <i class="bi bi-images"></i> Photos
+                    </div>
+                    <div class="stat-value text-info">{{ recent_photos.count }}</div>
+                    <small class="text-muted">Auto-sorted</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Alerts -->
+        {% if alerts %}
+        <div class="section-card">
+            <div class="section-title">
+                <i class="bi bi-bell-fill text-danger"></i>
+                Active Alerts
+            </div>
+            {% for alert in alerts %}
+            <div class="alert-card {% if alert.alert_type == 'WEATHER' %}weather{% endif %} mb-2 p-3 rounded">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>
+                            {% if alert.alert_type == 'WEATHER' %}
+                            <i class="bi bi-cloud-rain"></i>
+                            {% elif alert.alert_type == 'DELAY' %}
+                            <i class="bi bi-clock-history"></i>
+                            {% endif %}
+                            {{ alert.title }}
+                        </strong>
+                        <p class="mb-0 mt-1">{{ alert.description }}</p>
+                        <small class="text-muted">{{ alert.created_at|timesince }} ago</small>
+                    </div>
+                    <span class="badge bg-danger">NEW</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="row">
+            <!-- Recent Messages -->
+            <div class="col-md-6">
+                <div class="section-card">
+                    <div class="section-title">
+                        <span class="live-indicator"></span>
+                        <i class="bi bi-chat-left-text"></i>
+                        Recent Messages
+                    </div>
+                    <!-- Add this BEFORE the messages section in dashboard.html -->
+
+                    <!-- Filters & Search Bar -->
+                    <div class="section-card mb-3">
+                        <form method="get" class="row g-3">
+                            <div class="col-md-3">
+                                <input type="text" name="search" class="form-control" 
+                                    placeholder="🔍 Search messages..." 
+                                    value="{{ search_query }}">
+                            </div>
+                            
+                            <div class="col-md-2">
+                                <select name="sentiment" class="form-select">
+                                    <option value="">All Sentiments</option>
+                                    <option value="POSITIVE" {% if filter_sentiment == 'POSITIVE' %}selected{% endif %}>😊 Positive</option>
+                                    <option value="NEGATIVE" {% if filter_sentiment == 'NEGATIVE' %}selected{% endif %}>😟 Negative</option>
+                                    <option value="NEUTRAL" {% if filter_sentiment == 'NEUTRAL' %}selected{% endif %}>😐 Neutral</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-2">
+                                <select name="trade" class="form-select">
+                                    <option value="">All Trades</option>
+                                    {% for trade in available_trades %}
+                                    <option value="{{ trade }}" {% if filter_trade == trade %}selected{% endif %}>
+                                        {{ trade }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-2">
+                                <select name="delay" class="form-select">
+                                    <option value="">All Messages</option>
+                                    <option value="true" {% if filter_delay == 'true' %}selected{% endif %}>⏱️ Delays Only</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-2">
+                                <input type="date" name="date_from" class="form-control" 
+                                    value="{{ date_from }}" placeholder="From">
+                            </div>
+                            
+                            <div class="col-md-1">
+                                <button type="submit" class="btn btn-primary w-100">Filter</button>
+                            </div>
+                        </form>
+                        
+                        {% if search_query or filter_sentiment or filter_trade or filter_delay or date_from %}
+                        <div class="mt-2">
+                            <a href="{% url 'dashboard' %}" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-x-circle"></i> Clear Filters
+                            </a>
+                            <span class="text-muted ms-2">Showing {{ total_messages }} results</span>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Pagination Controls (add AFTER messages list) -->
+                    {% if total_pages > 1 %}
+                    <nav class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            <li class="page-item {% if not has_prev %}disabled{% endif %}">
+                                <a class="page-link" href="?page={{ current_page|add:-1 }}&search={{ search_query }}&sentiment={{ filter_sentiment }}&trade={{ filter_trade }}&delay={{ filter_delay }}&date_from={{ date_from }}">
+                                    Previous
+                                </a>
+                            </li>
+                            
+                            <li class="page-item active">
+                                <span class="page-link">Page {{ current_page }} of {{ total_pages }}</span>
+                            </li>
+                            
+                            <li class="page-item {% if not has_next %}disabled{% endif %}">
+                                <a class="page-link" href="?page={{ current_page|add:1 }}&search={{ search_query }}&sentiment={{ filter_sentiment }}&trade={{ filter_trade }}&delay={{ filter_delay }}&date_from={{ date_from }}">
+                                    Next
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    <div id="messages-container">
+                        {% for msg in messages %}
+                        <div class="message-item {{ msg.sentiment|lower }}">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ msg.sender_name }}</strong>
+                                <small class="text-muted">{{ msg.created_at|timesince }} ago</small>
+                            </div>
+                            <p class="mb-2 mt-1">{{ msg.body }}</p>
+                            <div class="d-flex gap-2 flex-wrap">
+                                {% if msg.sentiment == 'POSITIVE' %}
+                                <span class="badge bg-success">😊 Positive</span>
+                                {% elif msg.sentiment == 'NEGATIVE' %}
+                                <span class="badge bg-danger">😟 Negative</span>
+                                {% endif %}
+                                
+                                {% if msg.trade_detected %}
+                                <span class="badge-trade">🔧 {{ msg.trade_detected }}</span>
+                                {% endif %}
+                                
+                                {% if msg.location_detected %}
+                                <span class="badge-location">📍 {{ msg.location_detected }}</span>
+                                {% endif %}
+                                
+                                {% if msg.is_delay %}
+                                <span class="badge bg-warning text-dark">⏱️ DELAY</span>
+                                {% endif %}
+                                
+                                {% if msg.files.count > 0 %}
+                                <span class="badge bg-info">📎 {{ msg.files.count }} file(s)</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        <!-- After messages list -->
+                        {% if has_more %}
+                        <div class="text-center mt-3">
+                            <button class="btn btn-outline-primary" id="loadMoreBtn" 
+                                    data-page="{{ current_page|add:1 }}">
+                                <i class="bi bi-arrow-down-circle"></i> Load More Messages
+                            </button>
+                        </div>
+
+                        <script>
+                        document.getElementById('loadMoreBtn').addEventListener('click', function() {
+                            const nextPage = this.dataset.page;
+                            window.location.href = `?page=${nextPage}`;
+                        });
+                        </script>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drive Files & Sheets -->
+            <div class="col-md-6">
+                <!-- Suggested Documents -->
+                {% if drive_files %}
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="bi bi-file-earmark-text"></i>
+                        Related Documents
+                    </div>
+                    {% for file in drive_files %}
+                    <div class="{% if file.id in suggested_docs %}suggested-doc{% else %}border rounded p-2 mb-2{% endif %}">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-file-pdf text-danger me-2 fs-4"></i>
+                            <div class="flex-grow-1">
+                                <strong>{{ file.name }}</strong>
+                                {% if file.id in suggested_docs %}
+                                <span class="badge bg-warning text-dark ms-2">⭐ SUGGESTED</span>
+                                {% endif %}
+                                <br>
+                                <small class="text-muted">{{ file.uploaded_at|timesince }} ago</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Google Sheets Data -->
+                <!-- Google Sheets Section -->
+                {% if all_sheet_data %}
+                <div class="section-card">
+
+                    <div class="section-title mb-3">
+                        <i class="bi bi-table text-success"></i>
+                        Google Sheets
+                        <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">
+                            {{ all_sheet_data|length }} sheet{{ all_sheet_data|length|pluralize }}
+                        </span>
+                    </div>
+
+                    <!-- TAB BUTTONS -->
+                    <ul class="nav nav-tabs mb-0" id="sheetTabs" role="tablist">
+                        {% for sheet in all_sheet_data %}
+                        <li class="nav-item" role="presentation">
+                            <button
+                                class="nav-link {% if forloop.first %}active{% endif %}"
+                                id="{{ sheet.tab_id }}-tab"
+                                data-bs-toggle="tab"
+                                data-bs-target="#{{ sheet.tab_id }}"
+                                type="button"
+                                role="tab">
+                                <i class="bi bi-file-earmark-spreadsheet text-success me-1"></i>
+                                {{ sheet.name }}
+                                {% if sheet.rows %}
+                                <span class="badge bg-light text-secondary ms-1"
+                                    style="font-size:0.65rem;">
+                                    {{ sheet.rows|length }}
+                                </span>
+                                {% endif %}
+                            </button>
+                        </li>
+                        {% endfor %}
+                    </ul>
+
+                    <!-- TAB CONTENT PANELS -->
+                    <div class="tab-content border border-top-0 rounded-bottom p-3"
+                        id="sheetTabContent">
+                        {% for sheet in all_sheet_data %}
+                        <div class="tab-pane fade {% if forloop.first %}show active{% endif %}"
+                            id="{{ sheet.tab_id }}"
+                            role="tabpanel">
+
+                            <!-- Meta bar: last synced + action buttons -->
+                            <div class="d-flex justify-content-between align-items-center mb-2"
+                                style="font-size:0.8rem; color:#64748b;">
+                                <span>
+                                    <i class="bi bi-clock me-1"></i>
+                                    {% if sheet.last_synced %}
+                                        Synced {{ sheet.last_synced|timesince }} ago
+                                    {% else %}
+                                        Never synced
+                                    {% endif %}
+                                </span>
+                                <div class="d-flex gap-2">
+                                    <!-- Sync this sheet -->
+                                    <button class="btn btn-sm btn-outline-secondary sync-sheet-btn"
+                                            data-source-id="{{ sheet.source_id }}"
+                                            style="font-size:0.75rem; padding:0.2rem 0.6rem;">
+                                        <i class="bi bi-arrow-repeat"></i> Sync
+                                    </button>
+                                    <!-- View all rows -->
+                                    <a href="{% url 'view_full_sheet' sheet.source_id %}"
+                                    class="btn btn-sm btn-outline-primary"
+                                    style="font-size:0.75rem; padding:0.2rem 0.6rem;">
+                                        View All →
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- Table or empty state -->
+                            {% if sheet.rows %}
+                            <div class="table-responsive" style="max-height:320px; overflow-y:auto;">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            {% for header in sheet.headers %}
+                                            <th style="font-size:0.8rem; white-space:nowrap;">
+                                                {{ header }}
+                                            </th>
+                                            {% endfor %}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in sheet.rows %}
+                                        <tr>
+                                            {% for value in row.row_data.values %}
+                                            <td style="font-size:0.82rem; max-width:180px;
+                                                        overflow:hidden; text-overflow:ellipsis;
+                                                        white-space:nowrap;">
+                                                {{ value|default:"—" }}
+                                            </td>
+                                            {% endfor %}
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <!-- Empty state for this tab -->
+                            <div class="text-center py-4" style="color:#94a3b8;">
+                                <i class="bi bi-file-earmark-spreadsheet"
+                                style="font-size:2.5rem; opacity:0.3;"></i>
+                                <p class="mt-2 mb-2" style="font-size:0.88rem;">
+                                    No data synced yet for <strong>{{ sheet.name }}</strong>
+                                </p>
+                                <button class="btn btn-sm btn-outline-primary sync-sheet-btn"
+                                        data-source-id="{{ sheet.source_id }}">
+                                    <i class="bi bi-arrow-repeat me-1"></i> Sync Now
+                                </button>
+                            </div>
+                            {% endif %}
+
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                </div>
+
+                {% else %}
+                <div class="section-card text-center py-4" style="color:#94a3b8;">
+                    <i class="bi bi-file-earmark-spreadsheet"
+                    style="font-size:2.5rem; opacity:0.3;"></i>
+                    <p class="mt-3 mb-1">No Google Sheets connected.</p>
+                    <a href="{% url 'manage_data_sources' %}" class="btn btn-sm btn-outline-primary mt-1">
+                        <i class="bi bi-plus-circle me-1"></i> Add Google Sheet
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Photo Gallery -->
+        {% if recent_photos %}
+        <div class="section-card">
+            <div class="section-title">
+                <i class="bi bi-images"></i>
+                Recent Photos (Auto-Sorted by Trade)
+            </div>
+            <div class="photo-grid">
+                {% for photo in recent_photos %}
+                <div class="photo-item">
+                    {% if photo.file and photo.file.name %}
+                        <img src="{{ photo.file.url }}" alt="{{ photo.name }}" loading="lazy">
+                    {% else %}
+                        <div class="photo-placeholder">
+                            <p>📷 {{ photo.name }}</p>
+                            <small>Image not available</small>
+                        </div>
+                    {% endif %}
+                    <div class="photo-tag">
+                        {% if photo.trade_tag %}
+                        🔧 {{ photo.trade_tag }}
+                        {% endif %}
+                        {% if photo.location_tag %}
+                        | 📍 {{ photo.location_tag }}
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-refresh messages every 30 seconds
+        setInterval(function() {
+            fetch('/api/recent-messages/')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Updated:', data.messages.length, 'messages');
+                    // Optionally update UI without full reload
+                });
+        }, 30000);
+    </script>
+    <script>
+        function syncData() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Syncing...';
+            
+            fetch('{% url "trigger_sync" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'sync_started') {
+                    alert(`✅ ${data.message}\n\nRefreshing in 3 seconds...`);
+                    setTimeout(() => location.reload(), 3000);
+                } else if (data.status === 'no_sources') {
+                    alert('ℹ️ ' + data.message);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-cloud-download"></i> Sync Data';
+                } else {
+                    alert('❌ Sync failed');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-cloud-download"></i> Sync Data';
+                }
+            })
+            .catch(error => {
+                console.error('Sync error:', error);
+                alert('❌ Sync failed. Try again.');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-download"></i> Sync Data';
+            });
+        }
+        </script>
+        <script>
+            // Sync individual sheet button
+            document.querySelectorAll('.sync-sheet-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const sourceId = this.dataset.sourceId;
+                    const icon = this.querySelector('i');
+                    this.disabled = true;
+                    if (icon) icon.className = 'bi bi-hourglass-split';
+            
+                    fetch('{% url "trigger_sync" %}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ source_id: sourceId })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (icon) icon.className = 'bi bi-check-circle-fill text-success';
+                        setTimeout(() => window.location.reload(), 1000);
+                    })
+                    .catch(() => {
+                        this.disabled = false;
+                        if (icon) icon.className = 'bi bi-arrow-repeat';
+                    });
+                });
+            });
+            </script>
+
+        <script>const GROWEASY_PROJECT_ID = {{ project.id }};</script>
+        <script src="/static/js/notifications.js/"></script>
+</body>
+</html>

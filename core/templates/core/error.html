@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Not Found - GrowEasy Analytics</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&family=Roboto:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        .error-page {
+            background-color: var(--text-primary);
+            color: var(--bg-linen);
+            min-height: 100vh;
+        }
+        
+        .error-page .navbar {
+            background: transparent;
+        }
+        
+        .error-page .logo {
+            color: var(--bg-linen);
+        }
+        
+        .error-page .nav-links a {
+            color: rgba(242, 237, 231, 0.7);
+        }
+        
+        .error-page .nav-links a:hover,
+        .error-page .nav-links a.active {
+            color: var(--bg-linen);
+        }
+        
+        .error-page .login-btn {
+            border-color: var(--bg-linen);
+            color: var(--bg-linen) !important;
+        }
+        
+        .error-page .login-btn:hover {
+            background-color: var(--bg-linen);
+            color: var(--text-primary) !important;
+        }
+        
+        .error-page .mobile-menu-btn span {
+            background-color: var(--bg-linen);
+        }
+        
+        .error-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 120px 24px 80px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .error-background {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: var(--font-heading);
+            font-size: clamp(15rem, 40vw, 30rem);
+            font-weight: 700;
+            color: rgba(242, 237, 231, 0.03);
+            white-space: nowrap;
+            pointer-events: none;
+            user-select: none;
+            animation: pulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.03;
+            }
+            50% {
+                opacity: 0.06;
+            }
+        }
+        
+        .error-content {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            max-width: 600px;
+        }
+        
+        .error-code {
+            font-family: var(--font-heading);
+            font-size: clamp(6rem, 15vw, 10rem);
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, var(--bg-linen) 0%, rgba(242, 237, 231, 0.5) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: fadeInDown 0.8s ease;
+        }
+        
+        .error-content h1 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            font-weight: 400;
+            margin-bottom: 20px;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+        
+        .error-content > p {
+            font-size: 1.125rem;
+            line-height: 1.8;
+            color: rgba(242, 237, 231, 0.7);
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease 0.3s both;
+        }
+        
+        .error-illustration {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto 40px;
+            position: relative;
+            animation: fadeIn 1s ease 0.1s both;
+        }
+        
+        .error-illustration svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .frame {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+        
+        .search-box {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease 0.4s both;
+        }
+        
+        .search-box input {
+            flex: 1;
+            padding: 16px 20px;
+            background: rgba(242, 237, 231, 0.1);
+            border: 1px solid rgba(242, 237, 231, 0.2);
+            color: var(--bg-linen);
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            outline: none;
+            transition: var(--transition-fast);
+        }
+        
+        .search-box input::placeholder {
+            color: rgba(242, 237, 231, 0.5);
+        }
+        
+        .search-box input:focus {
+            border-color: rgba(242, 237, 231, 0.5);
+            background: rgba(242, 237, 231, 0.15);
+        }
+        
+        .search-box button {
+            padding: 16px 24px;
+            background: var(--bg-linen);
+            color: var(--text-primary);
+            border: none;
+            cursor: pointer;
+            transition: var(--transition-fast);
+        }
+        
+        .search-box button:hover {
+            background: var(--white);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+            animation: fadeInUp 0.8s ease 0.5s both;
+        }
+        
+        .btn-primary {
+            padding: 16px 40px;
+            background-color: var(--bg-linen);
+            color: var(--text-primary);
+            font-family: var(--font-heading);
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: var(--transition-fast);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--white);
+        }
+        
+        .btn-secondary {
+            padding: 16px 40px;
+            background-color: transparent;
+            color: var(--bg-linen);
+            border: 1px solid rgba(242, 237, 231, 0.3);
+            font-family: var(--font-heading);
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: var(--transition-fast);
+        }
+        
+        .btn-secondary:hover {
+            background-color: rgba(242, 237, 231, 0.1);
+            border-color: rgba(242, 237, 231, 0.5);
+        }
+        
+        .quick-links {
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 1px solid rgba(242, 237, 231, 0.1);
+            animation: fadeInUp 0.8s ease 0.6s both;
+        }
+        
+        .quick-links h4 {
+            font-family: var(--font-heading);
+            font-size: 0.875rem;
+            font-weight: 400;
+            margin-bottom: 20px;
+            color: rgba(242, 237, 231, 0.5);
+        }
+        
+        .quick-links-grid {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .quick-link {
+            padding: 12px 24px;
+            background: rgba(242, 237, 231, 0.05);
+            color: rgba(242, 237, 231, 0.7);
+            font-size: 0.875rem;
+            transition: var(--transition-fast);
+        }
+        
+        .quick-link:hover {
+            background: rgba(242, 237, 231, 0.1);
+            color: var(--bg-linen);
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                transform: translateY(-30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .error-section {
+                padding: 100px 16px 60px;
+            }
+            
+            .error-illustration {
+                width: 150px;
+                height: 150px;
+            }
+            
+            .search-box {
+                flex-direction: column;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .btn-primary,
+            .btn-secondary {
+                width: 100%;
+            }
+            
+            .quick-links-grid {
+                flex-direction: column;
+            }
+            
+            .quick-link {
+                width: 100%;
+            }
+        }
+    </style>
+<base target="_blank">
+</head>
+<body class="error-page">
+    <!-- Custom Cursor -->
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{% url 'home' %}" class="logo">GrowEasy Analytics</a>
+            <button class="mobile-menu-btn" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="{% url 'home' %}">Home</a></li>
+                <li><a href="{% url 'about' %}">About</a></li>
+                <li><a href="{% url 'contact' %}">Contact</a></li>
+                <li><a href="{% url 'login' %}" class="login-btn">Login</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Error Section -->
+    <section class="error-section">
+        <div class="error-background">404</div>
+        
+        <div class="error-content">
+            <div class="error-illustration">
+                <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Frame -->
+                    <g class="frame">
+                        <rect x="30" y="30" width="140" height="140" stroke="#f2ede7" stroke-width="2" fill="none"/>
+                        <rect x="40" y="40" width="120" height="120" stroke="#f2ede7" stroke-width="1" fill="none" opacity="0.3"/>
+                        <!-- Hanging wire -->
+                        <line x1="100" y1="0" x2="100" y2="30" stroke="#f2ede7" stroke-width="1"/>
+                        <circle cx="100" cy="30" r="3" fill="#f2ede7"/>
+                    </g>
+                    <!-- Question mark -->
+                    <text x="100" y="115" text-anchor="middle" fill="#f2ede7" font-family="Oswald" font-size="48" font-weight="300">?</text>
+                    <!-- Dust particles -->
+                    <circle cx="60" cy="70" r="1.5" fill="#f2ede7" opacity="0.4">
+                        <animate attributeName="opacity" values="0.4;0.8;0.4" dur="3s" repeatCount="indefinite"/>
+                    </circle>
+                    <circle cx="150" cy="90" r="1" fill="#f2ede7" opacity="0.3">
+                        <animate attributeName="opacity" values="0.3;0.6;0.3" dur="4s" repeatCount="indefinite"/>
+                    </circle>
+                    <circle cx="70" cy="150" r="1.5" fill="#f2ede7" opacity="0.5">
+                        <animate attributeName="opacity" values="0.5;0.9;0.5" dur="2.5s" repeatCount="indefinite"/>
+                    </circle>
+                    <circle cx="140" cy="140" r="1" fill="#f2ede7" opacity="0.35">
+                        <animate attributeName="opacity" values="0.35;0.7;0.35" dur="3.5s" repeatCount="indefinite"/>
+                    </circle>
+                </svg>
+            </div>
+            
+            <div class="error-code">404</div>
+            <h1>Page Not Found</h1>
+            <p>The page you're looking for seems to have wandered off the gallery wall. It might have been moved, deleted, or perhaps it never existed.</p>
+            
+            <div class="search-box">
+                <input type="text" placeholder="Search for GrowEasy Analyticss, artists, articles..." id="errorSearch">
+                <button type="button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="action-buttons">
+                <a href="{% url 'home' %}" class="btn-primary">Back to Home</a>
+                <a href="{% url 'contact' %}" class="btn-secondary">Contact Support</a>
+            </div>
+        </div>
+    </section>
+
+    <script src="/static/script.js"></script>
+    <script>
+        function handleErrorSearch() {
+            const searchInput = document.getElementById('errorSearch');
+            const query = searchInput.value.trim();
+            
+            if (query) {
+                // In a real application, this would perform a search
+                showNotification('Search functionality coming soon!', 'info');
+            } else {
+                searchInput.focus();
+            }
+        }
+        
+        // Allow Enter key to trigger search
+        document.getElementById('errorSearch')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                handleErrorSearch();
+            }
+        });
+    </script>
+</body>
+</html>

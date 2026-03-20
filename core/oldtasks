@@ -1,0 +1,550 @@
+from celery import shared_task
+from django.utils import timezone
+import requests
+from datetime import timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task
+def process_message_async(message_id):
+    """Process message with AI in background"""
+    from .models import Message, Alert
+    from .ai_processor import extract_construction_intel, detect_weather_delay
+    
+    try:
+        msg = Message.objects.get(id=message_id)
+        
+        # Extract construction intelligence
+        intel = extract_construction_intel(msg.body)
+        
+        # Update message with defaults for None values
+        msg.trade_detected = intel.get('trade') or ''
+        msg.location_detected = intel.get('location') or ''
+        msg.is_delay = intel.get('is_delay', False)
+        msg.delay_reason = intel.get('delay_reason') or ''
+        msg.processed = True
+        msg.save()
+        
+        # Only create alerts if message has a project
+        if msg.project:
+            # Check for weather delays
+            if detect_weather_delay(msg.body):
+                Alert.objects.create(
+                    project=msg.project,
+                    alert_type='WEATHER',
+                    title='Weather Delay Detected',
+                    description=f"{msg.sender_name}: {msg.body[:200]}",
+                    related_message=msg
+                )
+            
+            # Generic delay alert
+            elif msg.is_delay:
+                Alert.objects.create(
+                    project=msg.project,
+                    alert_type='DELAY',
+                    title=f'Delay: {msg.trade_detected or "Site"}',
+                    description=msg.delay_reason or msg.body[:200],
+                    related_message=msg
+                )
+        
+        print(f"✅ Message {message_id} processed: Trade={msg.trade_detected}, Delay={msg.is_delay}")
+        return intel
+    
+    except Message.DoesNotExist:
+        print(f"❌ Message {message_id} not found")
+        return None
+    except Exception as e:
+        print(f"❌ Error processing message {message_id}: {e}")
+        # Still save the message even if AI fails
+        try:
+            msg = Message.objects.get(id=message_id)
+            msg.trade_detected = ''
+            msg.location_detected = ''
+            msg.processed = True
+            msg.save()
+        except:
+            pass
+        return None
+
+
+@shared_task
+def process_file_async(file_id):
+    """Process uploaded files"""
+    from .models import File
+    from .ai_processor import transcribe_voice_note, describe_image, extract_construction_intel
+    
+    try:
+        file = File.objects.get(id=file_id)
+        
+        if file.file_type == 'VOICE':
+            audio_path = download_file(file.file_path, f'/tmp/{file.id}.ogg')
+            transcription = transcribe_voice_note(audio_path)
+            file.transcription = transcription
+            
+            if transcription:
+                intel = extract_construction_intel(transcription)
+                file.trade_tag = intel.get('trade') or ''
+                file.location_tag = intel.get('location') or ''
+                file.description = intel.get('summary') or ''
+        
+        elif file.file_type == 'PHOTO':
+            description = describe_image(file.file_path)
+            file.description = description
+            
+            intel = extract_construction_intel(description)
+            file.trade_tag = intel.get('trade') or ''
+            file.location_tag = intel.get('location') or ''
+        
+        file.processed = True
+        file.save()
+        
+        print(f"✅ File {file_id} processed: {file.file_type}")
+        return True
+    
+    except Exception as e:
+        print(f"❌ Error processing file {file_id}: {e}")
+        return False
+
+
+@shared_task
+def sync_google_sheets(project_id):
+    """Sync Google Sheets data for a project"""
+    from .models import Project, DataSource, SheetData
+    from .integrations import read_google_sheet
+    
+    try:
+        project = Project.objects.get(id=project_id)
+        sources = DataSource.objects.filter(
+            project=project,
+            source_type='GSHEET',
+            is_active=True
+        )
+        
+        for source in sources:
+            if not source.sheet_id:
+                continue
+            
+            data = read_google_sheet(source.sheet_id, source.sheet_name)
+            
+            SheetData.objects.filter(source=source).delete()
+            
+            for idx, row in enumerate(data):
+                SheetData.objects.create(
+                    source=source,
+                    row_data=row,
+                    row_index=idx
+                )
+            
+            source.last_synced = timezone.now()
+            source.save()
+            
+            print(f"✅ Synced sheet {source.name}: {len(data)} rows")
+        
+        return True
+    
+    except Exception as e:
+        print(f"❌ Error syncing sheets for project {project_id}: {e}")
+        return False
+
+
+@shared_task
+def sync_google_drive(project_id):
+    """Sync Google Drive files for a project"""
+    from .models import Project, DataSource, File
+    from .integrations import read_google_drive
+    
+    try:
+        project = Project.objects.get(id=project_id)
+        sources = DataSource.objects.filter(
+            project=project,
+            source_type='GDRIVE',
+            is_active=True
+        )
+        
+        for source in sources:
+            if not source.folder_id:
+                continue
+            
+            files = read_google_drive(source.folder_id)
+            
+            for drive_file in files:
+                file_type = 'PDF' if 'pdf' in drive_file['mimeType'] else 'OTHER'
+                
+                File.objects.update_or_create(
+                    project=project,
+                    source='GDRIVE',
+                    file_path=drive_file['id'],
+                    defaults={
+                        'name': drive_file['name'],
+                        'file_type': file_type,
+                    }
+                )
+            
+            source.last_synced = timezone.now()
+            source.save()
+            
+            print(f"✅ Synced Drive folder {source.name}: {len(files)} files")
+        
+        return True
+    
+    except Exception as e:
+        print(f"❌ Error syncing Drive for project {project_id}: {e}")
+        return False
+
+
+@shared_task
+def sync_all_projects():
+    """Sync all active data sources for all projects"""
+    from .models import Project, DataSource
+    
+    projects = Project.objects.all()
+    
+    for project in projects:
+        # Sync sheets
+        if DataSource.objects.filter(project=project, source_type='GSHEET', is_active=True).exists():
+            sync_google_sheets.delay(project.id)
+        
+        # Sync drive
+        if DataSource.objects.filter(project=project, source_type='GDRIVE', is_active=True).exists():
+            sync_google_drive.delay(project.id)
+    
+    print(f"✅ Triggered sync for {projects.count()} projects")
+    return True
+
+
+def download_file(url, save_path):
+    """Helper to download file from URL"""
+    response = requests.get(url, stream=True)
+    with open(save_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    return save_path
+
+
+
+# ---- SCORING WEIGHTS (must sum to 100) ----
+WEIGHT_NEGATIVE_SENTIMENT = 40   # 40 points max
+WEIGHT_DELAY_DETECTIONS   = 35   # 35 points max
+WEIGHT_SILENCE            = 25   # 25 points max (binary: silent or not)
+
+# How many hours back to look
+WINDOW_HOURS = 72
+
+# Silence threshold: if no message in this many hours → silent flag
+SILENCE_THRESHOLD_HOURS = 24
+
+# Delay count that represents "maximum" risk (maps to full 35 pts)
+# e.g. 5+ delays in 72hrs = full delay score
+MAX_DELAYS_FOR_FULL_SCORE = 5
+
+
+def compute_risk_score(negative_pct, delay_count, is_silent):
+    """
+    Pure function — takes raw signals, returns 0-100 score.
+    Keeping this separate makes it easy to unit test.
+    
+    Args:
+        negative_pct: float 0.0-1.0 (e.g. 0.6 = 60% negative msgs)
+        delay_count:  int (number of delay_detected messages)
+        is_silent:    bool (True if no messages in last 24hrs)
+    
+    Returns:
+        int: risk score 0-100
+    """
+    # Sentiment score: 0-40 points
+    sentiment_score = negative_pct * WEIGHT_NEGATIVE_SENTIMENT
+
+    # Delay score: 0-35 points, capped at MAX_DELAYS_FOR_FULL_SCORE
+    delay_ratio = min(delay_count / MAX_DELAYS_FOR_FULL_SCORE, 1.0)
+    delay_score = delay_ratio * WEIGHT_DELAY_DETECTIONS
+
+    # Silence score: binary — 0 or 25 points
+    silence_score = WEIGHT_SILENCE if is_silent else 0
+
+    total = sentiment_score + delay_score + silence_score
+    return min(int(round(total)), 100)  # cap at 100
+
+
+def score_to_level(score):
+    """Convert numeric score to risk level string."""
+    if score >= 70:
+        return 'high'
+    elif score >= 40:
+        return 'medium'
+    else:
+        return 'healthy'
+
+
+def generate_signals(project, messages, negative_pct, delay_count, is_silent, window_hours):
+    """
+    THIS IS THE "SIGNAL COMPRESSION" FUNCTION.
+    
+    It takes all the raw data and produces a SHORT list of
+    human-readable insight strings. This is what a Director
+    reads when they click a project.
+    
+    We try to be specific — not just "delays detected" but
+    "4 delays detected in Electrical and Plumbing work"
+    """
+    signals = []
+
+    # --- SILENCE SIGNAL ---
+    if is_silent:
+        signals.append(
+            f"⚠️ No field updates received in the last {SILENCE_THRESHOLD_HOURS} hours"
+        )
+
+    # --- SENTIMENT SIGNALS ---
+    if negative_pct >= 0.7:
+        signals.append(
+            f"🔴 {int(negative_pct * 100)}% of updates in the last {window_hours}hrs are negative"
+        )
+    elif negative_pct >= 0.4:
+        signals.append(
+            f"🟡 Elevated negative sentiment — {int(negative_pct * 100)}% of recent updates"
+        )
+
+    # --- DELAY SIGNALS ---
+    # Get the delay messages so we can extract trades/locations
+    delay_messages = messages.filter(is_delay=True)
+    if delay_count > 0:
+        # Try to extract which trades had delays (uses your existing trade field)
+        delay_trades = list(
+            delay_messages
+            .exclude(trade_detected__isnull=True)
+            .exclude(trade_detected='')
+            .values_list('trade_detected', flat=True)
+            .distinct()
+        )
+        
+        if delay_trades:
+            trades_str = ', '.join(delay_trades[:3])  # cap at 3 for readability
+            if delay_count == 1:
+                signals.append(f"🚧 Delay detected in {trades_str} work")
+            else:
+                signals.append(f"🚧 {delay_count} delays detected — {trades_str}")
+        else:
+            signals.append(
+                f"🚧 {delay_count} delay{'s' if delay_count > 1 else ''} detected in last {window_hours}hrs"
+            )
+        
+        # Add specific delay reasons if they exist (your delay_reason field)
+        delay_reasons = list(
+            delay_messages
+            .exclude(delay_reason__isnull=True)
+            .exclude(delay_reason='')
+            .values_list('delay_reason', flat=True)
+            .distinct()[:2]  # max 2 reasons to keep it concise
+        )
+        for reason in delay_reasons:
+            signals.append(f"   → Reason: {reason}")
+
+    # --- LOCATION-BASED SIGNALS ---
+    # If multiple locations are having issues, call that out
+    affected_locations = list(
+        messages
+        .filter(sentiment='NEGATIVE')
+        .exclude(location_detected__isnull=True)
+        .exclude(location_detected='')
+        .values_list('location_detected', flat=True)
+        .distinct()
+    )
+    if len(affected_locations) >= 2:
+        locs_str = ', '.join(affected_locations[:3])
+        signals.append(f"📍 Negative reports from: {locs_str}")
+
+    # --- HEALTHY SIGNAL (nothing bad found) ---
+    if not signals:
+        msg_count = messages.count()
+        signals.append(f"✅ {msg_count} updates received — no issues detected")
+
+    return signals
+
+
+@shared_task(name='core.tasks.calculate_project_risk')
+def calculate_project_risk(project_id=None):
+    from core.models import Project, Message, RiskSnapshot
+
+    if project_id:
+        projects = Project.objects.filter(id=project_id)
+    else:
+        projects = Project.objects.all()
+
+    window_start = timezone.now() - timedelta(hours=WINDOW_HOURS)
+    silence_threshold = timezone.now() - timedelta(hours=SILENCE_THRESHOLD_HOURS)
+
+    for project in projects:
+        try:
+            messages = Message.objects.filter(
+                project=project,
+                created_at__gte=window_start
+            )
+
+            total_count = messages.count()
+
+            if total_count > 0:
+                negative_count = messages.filter(sentiment='NEGATIVE').count()
+                negative_pct = negative_count / total_count
+            else:
+                negative_pct = 0.0
+
+            delay_count = messages.filter(is_delay=True).count()
+
+            is_silent = not Message.objects.filter(
+                project=project,
+                created_at__gte=silence_threshold
+            ).exists()
+
+            score = compute_risk_score(negative_pct, delay_count, is_silent)
+            risk_level = score_to_level(score)
+
+            signals = generate_signals(
+                project, messages,
+                negative_pct, delay_count, is_silent,
+                WINDOW_HOURS
+            )
+
+            # ---- SAVE: always create a new snapshot ----
+            RiskSnapshot.objects.create(
+                project=project,
+                score=score,
+                risk_level=risk_level,
+                negative_sentiment_pct=round(negative_pct, 3),
+                delay_count=delay_count,
+                is_silent=is_silent,
+                message_count=total_count,
+                signals=signals,
+                window_hours=WINDOW_HOURS
+            )
+
+            # ---- CLEANUP: keep only the 10 most recent per project ----
+            # This prevents DB bloat while preserving enough history
+            # for the 7-day trend chart
+            old_snapshots = (
+                RiskSnapshot.objects
+                .filter(project=project)
+                .order_by('-created_at')
+                .values_list('id', flat=True)[10:]  # everything after the 10th
+            )
+            if old_snapshots:
+                RiskSnapshot.objects.filter(id__in=list(old_snapshots)).delete()
+
+            logger.info(
+                f"[RiskPulse] {project.name}: {risk_level.upper()} "
+                f"(score={score}, neg={negative_pct:.0%}, "
+                f"delays={delay_count}, silent={is_silent})"
+            )
+
+        except Exception as e:
+            logger.error(f"[RiskPulse] Failed for project {project.id}: {e}", exc_info=True)
+
+    return f"Risk snapshots computed for {projects.count()} projects"
+
+
+
+'''
+@shared_task(name='core.tasks.calculate_project_risk')
+def calculate_project_risk(project_id=None):
+    """
+    Main Celery task. Can run for one project or all projects.
+    
+    Called with:
+        calculate_project_risk.delay()              # all projects
+        calculate_project_risk.delay(project_id=5)  # specific project
+    """
+    # Import here to avoid circular imports
+    from core.models import Project, Message, RiskSnapshot
+
+    # Determine which projects to process
+    if project_id:
+        projects = Project.objects.filter(id=project_id)
+    else:
+        projects = Project.objects.all()
+
+    window_start = timezone.now() - timedelta(hours=WINDOW_HOURS)
+    silence_threshold = timezone.now() - timedelta(hours=SILENCE_THRESHOLD_HOURS)
+
+    for project in projects:
+        try:
+            # --- PULL DATA ---
+            # All messages in the analysis window for this project
+            messages = Message.objects.filter(
+                project=project,
+                created_at__gte=window_start
+            )
+
+            total_count = messages.count()
+
+            # --- COMPUTE SIGNALS ---
+
+            # 1. Negative sentiment %
+            if total_count > 0:
+                negative_count = messages.filter(sentiment='NEGATIVE').count()
+                negative_pct = negative_count / total_count
+            else:
+                negative_pct = 0.0
+
+            # 2. Delay count
+            delay_count = messages.filter(is_delay=True).count()
+
+            # 3. Silence check (no messages in last 24hrs)
+            recent_messages = Message.objects.filter(
+                project=project,
+                created_at__gte=silence_threshold
+            )
+            is_silent = not recent_messages.exists()
+
+            # --- SCORE ---
+            score = compute_risk_score(negative_pct, delay_count, is_silent)
+            risk_level = score_to_level(score)
+
+            # --- SIGNAL COMPRESSION ---
+            signals = generate_signals(
+                project, messages,
+                negative_pct, delay_count, is_silent,
+                WINDOW_HOURS
+            )
+
+            # --- SAVE SNAPSHOT ---
+            RiskSnapshot.objects.create(
+                project=project,
+                score=score,
+                risk_level=risk_level,
+                negative_sentiment_pct=round(negative_pct, 3),
+                delay_count=delay_count,
+                is_silent=is_silent,
+                message_count=total_count,
+                signals=signals,
+                window_hours=WINDOW_HOURS
+            )
+
+            logger.info(
+                f"[RiskPulse] {project.name}: {risk_level.upper()} "
+                f"(score={score}, neg={negative_pct:.0%}, "
+                f"delays={delay_count}, silent={is_silent})"
+            )
+
+        except Exception as e:
+            logger.error(f"[RiskPulse] Failed for project {project.id}: {e}", exc_info=True)
+
+    return f"Risk snapshots computed for {projects.count()} projects"
+
+'''
+
+
+# Periodic tasks configuration (add to celery.py):
+# from celery.schedules import crontab
+# 
+# app.conf.beat_schedule = {
+#     'sync-sheets-every-hour': {
+#         'task': 'core.tasks.sync_google_sheets',
+#         'schedule': crontab(minute=0),  # Every hour
+#     },
+#     'daily-summary': {
+#         'task': 'core.tasks.daily_summary_task',
+#         'schedule': crontab(hour=18, minute=0),  # 6 PM daily
+#     },
+# }
+

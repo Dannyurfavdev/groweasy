@@ -1,0 +1,731 @@
+from django.shortcuts import render, redirect
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpResponse, JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate, login
+from guardian.shortcuts import get_objects_for_user
+import json
+
+from .ai_processor import (
+    analyze_sentiment, 
+    extract_construction_intel,
+    detect_weather_delay,
+)
+from .tasks import process_message_async
+
+
+@csrf_exempt
+def whatsapp_webhook(request):
+    """Handle incoming WhatsApp messages with phone number mapping"""
+    from .models import Message, File, Project, ProjectContact
+    
+    if request.method == 'POST':
+        msg_body = request.POST.get('Body', '')
+        sender = request.POST.get('From', '')
+        profile_name = request.POST.get('ProfileName', 'Unknown')
+        num_media = int(request.POST.get('NumMedia', 0))
+        
+        print(f"📩 Message from {profile_name} ({sender}): {msg_body}")
+        
+        # Extract phone number (remove 'whatsapp:' prefix)
+        sender_number = sender.replace('whatsapp:', '')
+        
+        # Look up project by phone number mapping
+        project = None
+        try:
+            contact = ProjectContact.objects.filter(
+                phone_number=sender_number,
+                is_active=True
+            ).select_related('project').first()
+            
+            if contact:
+                project = contact.project
+                print(f"📍 Mapped to project: {project.name}")
+            else:
+                # No mapping found - assign to default project
+                project = Project.objects.first()
+                print(f"⚠️ No mapping for {sender_number}, using default: {project.name if project else 'None'}")
+        except Exception as e:
+            print(f"Error looking up project: {e}")
+            project = Project.objects.first()
+        
+        # Quick sentiment analysis
+        sentiment, score = analyze_sentiment(msg_body)
+        
+        # Create message record
+        msg = Message.objects.create(
+            project=project,
+            sender=sender,
+            sender_name=profile_name,
+            body=msg_body,
+            sentiment=sentiment,
+            score=score
+        )
+        
+        # Handle media attachments
+        for i in range(num_media):
+            media_url = request.POST.get(f'MediaUrl{i}')
+            media_type = request.POST.get(f'MediaContentType{i}', '')
+            
+            if media_url:
+                if 'image' in media_type:
+                    file_type = 'PHOTO'
+                elif 'audio' in media_type:
+                    file_type = 'VOICE'
+                else:
+                    file_type = 'OTHER'
+                
+                File.objects.create(
+                    project=project,
+                    message=msg,
+                    name=f"{profile_name}_{msg.created_at.strftime('%Y%m%d_%H%M%S')}_{i}",
+                    file_type=file_type,
+                    source='WHATSAPP',
+                    file_path=media_url
+                )
+        
+        # Queue async AI processing
+        try:
+            process_message_async.delay(msg.id)
+        except Exception as e:
+            # Fallback: process synchronously if Celery not available
+            print(f"Celery not available, processing synchronously: {e}")
+            from .models import Alert
+            
+            intel = extract_construction_intel(msg.body)
+            msg.trade_detected = intel.get('trade') or ''
+            msg.location_detected = intel.get('location') or ''
+            msg.is_delay = intel.get('is_delay', False)
+            msg.delay_reason = intel.get('delay_reason') or ''
+            msg.processed = True
+            msg.save()
+            
+            if msg.project and detect_weather_delay(msg.body):
+                Alert.objects.create(
+                    project=msg.project,
+                    alert_type='WEATHER',
+                    title='Weather Delay Detected',
+                    description=f"{msg.sender_name}: {msg.body[:200]}",
+                    related_message=msg
+                )
+        
+        return HttpResponse("OK")
+    
+    return HttpResponse("Only POST allowed", status=405)
+
+
+@login_required
+def dashboard(request):
+    """Main GrowEasy dashboard with project switcher"""
+    from .models import Message, DataSource, File, Project, Alert, SheetData
+    
+    # Get all user's projects
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    
+    # Get selected project from session or query param
+    selected_project_id = request.GET.get('project_id') or request.session.get('selected_project_id')
+    
+    current_project = None
+    if selected_project_id:
+        current_project = projects.filter(id=selected_project_id).first()
+    
+    if not current_project:
+        current_project = projects.first()
+    
+    # Auto-create project if none exists
+    if not current_project:
+        from django.contrib.auth.models import User
+        user = request.user
+        current_project = Project.objects.create(
+            name='Demo Project',
+            address='Demo Address',
+            owner=user
+        )
+        projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    
+    # Save selection to session
+    request.session['selected_project_id'] = current_project.id
+    
+    # Get data for current project
+    messages_queryset = Message.objects.filter(
+        project=current_project
+    ).prefetch_related('files')
+    
+    total_messages = messages_queryset.count()
+    positive_count = messages_queryset.filter(sentiment='POSITIVE').count()
+    negative_count = messages_queryset.filter(sentiment='NEGATIVE').count()
+    sentiment_percent = (positive_count / total_messages * 100) if total_messages else 0
+    
+    messages = messages_queryset[:20]
+    
+    alerts = Alert.objects.filter(
+        project=current_project,
+        is_resolved=False
+    ).order_by('-created_at')[:5]
+    
+    recent_photos = File.objects.filter(
+        project=current_project,
+        file_type='PHOTO'
+    ).order_by('-uploaded_at')[:12]
+    
+    sheet_source = DataSource.objects.filter(
+        project=current_project,
+        source_type='GSHEET',
+        is_active=True
+    ).first()
+    
+    sheet_data = []
+    if sheet_source:
+        sheet_data = SheetData.objects.filter(source=sheet_source)[:10]
+    
+    drive_source = DataSource.objects.filter(
+        project=current_project,
+        source_type='GDRIVE',
+        is_active=True
+    ).first()
+    
+    drive_files = []
+    if drive_source:
+        drive_files = File.objects.filter(
+            project=current_project,
+            source='GDRIVE'
+        ).order_by('-uploaded_at')[:10]
+    
+    suggested_docs = []
+    
+    context = {
+        'project': current_project,
+        'all_projects': projects,
+        'messages': messages,
+        'total_messages': total_messages,
+        'positive_count': positive_count,
+        'negative_count': negative_count,
+        'sentiment_percent': sentiment_percent,
+        'alerts': alerts,
+        'recent_photos': recent_photos,
+        'sheet_data': sheet_data,
+        'drive_files': drive_files,
+        'suggested_docs': suggested_docs,
+    }
+    
+    return render(request, 'core/dashboard.html', context)
+
+
+@login_required
+def switch_project(request, project_id):
+    """Switch active project"""
+    from .models import Project
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    
+    if projects.filter(id=project_id).exists():
+        request.session['selected_project_id'] = project_id
+        print(f"✅ Switched to project ID: {project_id}")
+    
+    return redirect('dashboard')
+
+
+@login_required
+def manage_contacts(request):
+    """Manage phone number to project mappings"""
+    from .models import Project, ProjectContact
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first() or projects.first()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'add':
+            phone = request.POST.get('phone_number', '').strip()
+            name = request.POST.get('contact_name', '').strip()
+            role = request.POST.get('role', '').strip()
+            project_id = request.POST.get('project_id')
+            
+            # Normalize phone number (add + if missing)
+            if phone and not phone.startswith('+'):
+                phone = '+' + phone
+            
+            try:
+                project = projects.get(id=project_id)
+                
+                # Check if phone already exists
+                existing = ProjectContact.objects.filter(phone_number=phone).first()
+                if existing:
+                    # Update to new project
+                    existing.project = project
+                    existing.contact_name = name
+                    existing.role = role
+                    existing.save()
+                    message = f"✅ Updated {name} to {project.name}"
+                else:
+                    # Create new
+                    ProjectContact.objects.create(
+                        project=project,
+                        phone_number=phone,
+                        contact_name=name,
+                        role=role
+                    )
+                    message = f"✅ Added {name} to {project.name}"
+                
+                return JsonResponse({'success': True, 'message': message})
+            
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        
+        elif action == 'delete':
+            contact_id = request.POST.get('contact_id')
+            try:
+                ProjectContact.objects.filter(id=contact_id).delete()
+                return JsonResponse({'success': True, 'message': '✅ Contact removed'})
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+    
+    # Get all contacts for all projects
+    all_contacts = ProjectContact.objects.filter(
+        project__in=projects
+    ).select_related('project').order_by('project__name', 'contact_name')
+    
+    context = {
+        'all_projects': projects,
+        'current_project': current_project,
+        'all_contacts': all_contacts,
+    }
+    
+    return render(request, 'core/manage_contacts.html', context)
+
+
+@login_required
+def export_data(request):
+    """Export dashboard data to CSV"""
+    from .models import Message, File, Project, Alert
+    import csv
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first() or projects.first()
+    
+    if not current_project:
+        return HttpResponse("No project found", status=404)
+    
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="groweasy_{current_project.name.replace(" ", "_")}.csv"'
+    
+    writer = csv.writer(response)
+    
+    writer.writerow(['=== MESSAGES ==='])
+    writer.writerow(['Date', 'Sender', 'Message', 'Sentiment', 'Trade', 'Location', 'Delay?'])
+    
+    messages = Message.objects.filter(project=current_project).order_by('-created_at')
+    for msg in messages:
+        writer.writerow([
+            msg.created_at.strftime('%Y-%m-%d %H:%M'),
+            msg.sender_name,
+            msg.body,
+            msg.sentiment,
+            msg.trade_detected or '',
+            msg.location_detected or '',
+            'YES' if msg.is_delay else 'NO'
+        ])
+    
+    writer.writerow([])
+    writer.writerow(['=== FILES ==='])
+    writer.writerow(['Date', 'Name', 'Type', 'Trade', 'Location'])
+    
+    files = File.objects.filter(project=current_project).order_by('-uploaded_at')
+    for file in files:
+        writer.writerow([
+            file.uploaded_at.strftime('%Y-%m-%d %H:%M'),
+            file.name,
+            file.file_type,
+            file.trade_tag or '',
+            file.location_tag or '',
+        ])
+    
+    writer.writerow([])
+    writer.writerow(['=== ALERTS ==='])
+    writer.writerow(['Date', 'Type', 'Title', 'Description'])
+    
+    alerts = Alert.objects.filter(project=current_project).order_by('-created_at')
+    for alert in alerts:
+        writer.writerow([
+            alert.created_at.strftime('%Y-%m-%d %H:%M'),
+            alert.alert_type,
+            alert.title,
+            alert.description,
+        ])
+    
+    return response
+
+
+def login_view(request):
+    """User login"""
+    if request.method == 'POST':
+        username = request.POST['username']
+        password = request.POST['password']
+        user = authenticate(request, username=username, password=password)
+        
+        if user:
+            login(request, user)
+            return redirect('dashboard')
+        
+        return render(request, 'core/login.html', {'error': 'Invalid credentials'})
+    
+    return render(request, 'core/login.html')
+
+# Add these new view functions to core/views.py
+
+@login_required
+def manage_projects(request):
+    """Create and manage projects"""
+    from .models import Project
+    from guardian.shortcuts import assign_perm
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'create':
+            name = request.POST.get('name', '').strip()
+            address = request.POST.get('address', '').strip()
+            
+            if not name:
+                return JsonResponse({'success': False, 'message': 'Project name is required'})
+            
+            try:
+                # Create project
+                project = Project.objects.create(
+                    name=name,
+                    address=address,
+                    owner=request.user
+                )
+                
+                # Assign permissions to creator
+                assign_perm('view_project', request.user, project)
+                
+                # Set as active project
+                request.session['selected_project_id'] = project.id
+                
+                return JsonResponse({
+                    'success': True, 
+                    'message': f'✅ Created project: {name}',
+                    'project_id': project.id
+                })
+            
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        
+        elif action == 'delete':
+            project_id = request.POST.get('project_id')
+            
+            try:
+                projects = get_objects_for_user(request.user, 'core.view_project', Project)
+                project = projects.get(id=project_id)
+                
+                # Don't allow deleting if it's the only project
+                if projects.count() <= 1:
+                    return JsonResponse({
+                        'success': False, 
+                        'message': 'Cannot delete your only project'
+                    })
+                
+                project_name = project.name
+                project.delete()
+                
+                # Switch to another project
+                new_project = projects.exclude(id=project_id).first()
+                if new_project:
+                    request.session['selected_project_id'] = new_project.id
+                
+                return JsonResponse({
+                    'success': True, 
+                    'message': f'✅ Deleted project: {project_name}'
+                })
+            
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        
+        elif action == 'edit':
+            project_id = request.POST.get('project_id')
+            name = request.POST.get('name', '').strip()
+            address = request.POST.get('address', '').strip()
+            
+            try:
+                projects = get_objects_for_user(request.user, 'core.view_project', Project)
+                project = projects.get(id=project_id)
+                
+                project.name = name
+                project.address = address
+                project.save()
+                
+                return JsonResponse({
+                    'success': True, 
+                    'message': f'✅ Updated project: {name}'
+                })
+            
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+    
+    # GET request - show projects page
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    
+    context = {
+        'all_projects': projects,
+    }
+    
+    return render(request, 'core/manage_projects.html', context)
+
+@login_required
+def manage_data_sources(request):
+    """Manage Google Sheets and Drive folders per project"""
+    from .models import Project, DataSource
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first() or projects.first()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'add':
+            project_id = request.POST.get('project_id')
+            source_type = request.POST.get('source_type')  # GSHEET or GDRIVE
+            name = request.POST.get('name', '').strip()
+            
+            try:
+                project = projects.get(id=project_id)
+                
+                if source_type == 'GSHEET':
+                    sheet_id = request.POST.get('sheet_id', '').strip()
+                    sheet_name = request.POST.get('sheet_name', 'Sheet1').strip()
+                    
+                    DataSource.objects.create(
+                        project=project,
+                        name=name,
+                        source_type='GSHEET',
+                        sheet_id=sheet_id,
+                        sheet_name=sheet_name,
+                        is_active=True
+                    )
+                    message = f"✅ Added Google Sheet: {name}"
+                
+                elif source_type == 'GDRIVE':
+                    folder_id = request.POST.get('folder_id', '').strip()
+                    
+                    DataSource.objects.create(
+                        project=project,
+                        name=name,
+                        source_type='GDRIVE',
+                        folder_id=folder_id,
+                        is_active=True
+                    )
+                    message = f"✅ Added Google Drive folder: {name}"
+                
+                else:
+                    return JsonResponse({'success': False, 'message': 'Invalid source type'})
+                
+                return JsonResponse({'success': True, 'message': message})
+            
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        
+        elif action == 'delete':
+            source_id = request.POST.get('source_id')
+            try:
+                DataSource.objects.filter(id=source_id).delete()
+                return JsonResponse({'success': True, 'message': '✅ Data source removed'})
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        
+        elif action == 'toggle':
+            source_id = request.POST.get('source_id')
+            try:
+                source = DataSource.objects.get(id=source_id)
+                source.is_active = not source.is_active
+                source.save()
+                status = "activated" if source.is_active else "deactivated"
+                return JsonResponse({'success': True, 'message': f'✅ Data source {status}'})
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        
+        elif action == 'sync':
+            source_id = request.POST.get('source_id')
+            try:
+                source = DataSource.objects.get(id=source_id)
+                
+                if source.source_type == 'GSHEET':
+                    from .tasks import sync_google_sheets
+                    try:
+                        sync_google_sheets.delay(source.project.id)
+                        message = "✅ Sync started in background"
+                    except:
+                        sync_google_sheets(source.project.id)
+                        message = "✅ Sync completed"
+                
+                elif source.source_type == 'GDRIVE':
+                    from .tasks import sync_google_drive
+                    try:
+                        sync_google_drive.delay(source.project.id)
+                        message = "✅ Sync started in background"
+                    except:
+                        sync_google_drive(source.project.id)
+                        message = "✅ Sync completed"
+                
+                return JsonResponse({'success': True, 'message': message})
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+    
+    # Get all data sources grouped by project
+    all_sources = DataSource.objects.filter(
+        project__in=projects
+    ).select_related('project').order_by('project__name', 'source_type', 'name')
+    
+    context = {
+        'all_projects': projects,
+        'current_project': current_project,
+        'all_sources': all_sources,
+    }
+    
+    return render(request, 'core/manage_data_sources.html', context)
+
+
+@login_required
+def trigger_sync(request):
+    """Manually trigger Google Sheets AND Drive sync"""
+    from .models import Project, DataSource
+    from .tasks import sync_google_sheets, sync_google_drive
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first()
+    
+    if not current_project:
+        return JsonResponse({'error': 'No project found'}, status=404)
+    
+    synced_sources = []
+    
+    # Check if project has Google Sheets
+    has_sheets = DataSource.objects.filter(
+        project=current_project, 
+        source_type='GSHEET', 
+        is_active=True
+    ).exists()
+    
+    # Check if project has Google Drive
+    has_drive = DataSource.objects.filter(
+        project=current_project, 
+        source_type='GDRIVE', 
+        is_active=True
+    ).exists()
+    
+    # Sync Sheets if available
+    if has_sheets:
+        try:
+            sync_google_sheets.delay(current_project.id)
+            synced_sources.append('Google Sheets (background)')
+        except:
+            sync_google_sheets(current_project.id)
+            synced_sources.append('Google Sheets')
+    
+    # Sync Drive if available
+    if has_drive:
+        try:
+            sync_google_drive.delay(current_project.id)
+            synced_sources.append('Google Drive (background)')
+        except:
+            sync_google_drive(current_project.id)
+            synced_sources.append('Google Drive')
+    
+    if synced_sources:
+        return JsonResponse({
+            'status': 'sync_started',
+            'sources': synced_sources,
+            'message': f"Syncing {', '.join(synced_sources)}"
+        })
+    else:
+        return JsonResponse({
+            'status': 'no_sources',
+            'message': 'No active data sources to sync'
+        })
+
+'''
+@login_required
+def trigger_sync(request):
+    """Manually trigger Google Sheets/Drive sync"""
+    from .models import Project
+    from .tasks import sync_google_sheets
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first()
+    
+    if current_project:
+        try:
+            sync_google_sheets.delay(current_project.id)
+            return JsonResponse({'status': 'sync_started'})
+        except:
+            # Sync synchronously if Celery not available
+            from .tasks import sync_google_sheets
+            sync_google_sheets(current_project.id)
+            return JsonResponse({'status': 'sync_completed'})
+    
+    return JsonResponse({'error': 'No project found'}, status=404)
+'''
+
+
+@login_required
+def api_recent_messages(request):
+    """Get recent messages as JSON for live updates"""
+    from .models import Message, Project
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first()
+    
+    if not current_project:
+        return JsonResponse({'messages': []})
+    
+    messages = Message.objects.filter(
+        project=current_project
+    ).order_by('-created_at')[:10]
+    
+    data = [{
+        'id': msg.id,
+        'sender': msg.sender_name,
+        'body': msg.body,
+        'sentiment': msg.sentiment,
+        'trade': msg.trade_detected,
+        'location': msg.location_detected,
+        'is_delay': msg.is_delay,
+        'created_at': msg.created_at.isoformat(),
+    } for msg in messages]
+    
+    return JsonResponse({'messages': data})
+
+
+@login_required
+def api_alerts(request):
+    """Get active alerts as JSON"""
+    from .models import Alert, Project
+    
+    projects = get_objects_for_user(request.user, 'core.view_project', Project)
+    selected_project_id = request.session.get('selected_project_id')
+    current_project = projects.filter(id=selected_project_id).first()
+    
+    if not current_project:
+        return JsonResponse({'alerts': []})
+    
+    alerts = Alert.objects.filter(
+        project=current_project,
+        is_resolved=False
+    ).order_by('-created_at')[:5]
+    
+    data = [{
+        'id': alert.id,
+        'type': alert.alert_type,
+        'title': alert.title,
+        'description': alert.description,
+        'created_at': alert.created_at.isoformat(),
+    } for alert in alerts]
+    
+    return JsonResponse({'alerts': data})

@@ -1,0 +1,244 @@
+<!DOCTYPE html><html lang="en">
+<!-- Mirrored from qdrjpoj3s6tbk.ok.kimi.link/contact.html by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 02 Mar 2026 14:40:38 GMT -->
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Contact Us - GrowEasy</title>
+    <link rel="stylesheet" href="/static/styles.css"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com/"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin=""/>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&amp;family=Roboto:wght@100;300;400;500;700;900&amp;display=swap" rel="stylesheet"/>
+</head>
+<body>
+    <!-- Custom Cursor -->
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{% url 'home' %}" class="logo">GROW EASY</a>
+            <button class="mobile-menu-btn" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="{% url 'home' %}" class="active">Home</a></li>
+                <li><a href="{% url 'about' %}">About</a></li>
+                <li><a href="{% url 'contact' %}">Contact</a></li>
+                <li><a href="{% url 'login' %}" class="login-btn">Demo</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Contact Hero -->
+    <section class="contact-hero">
+        <div class="container">
+            <div class="contact-hero-content">
+                <span class="section-label">Get in Touch</span>
+                <h1>Contact Us</h1>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section class="contact-section">
+        <div class="container">
+            <div class="contact-grid">
+                <div class="contact-info">
+                    <h2>Let&#39;s Connect</h2>
+                    <p>Request pilot access, have a question, collaboration idea, or just want to say hello? We&#39;d love to hear from you.</p>
+                    
+                    <div class="info-items">
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"></path>
+                                    <circle cx="12" cy="10" r="3"></circle>
+                                </svg>
+                            </div>
+                            <div class="info-content">
+                                <h4>Location</h4>
+                                <p>Remote</p>
+                            </div>
+                        </div>
+                        
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                    <polyline points="22,6 12,13 2,6"></polyline>
+                                </svg>
+                            </div>
+                            <div class="info-content">
+                                <h4>Email Us</h4>
+                                <p>Daniel@groweasyanalytics.com</p>
+                            </div>
+                        </div>
+                        
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"></path>
+                                </svg>
+                            </div>
+                            <div class="info-content">
+                                <h4>WhatsApp</h4>
+                                <p>+44 7541 088428<br/>Mon-Fri, 9am-6pm EST</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="social-connect">
+                        <h4>Follow Our Journey</h4>
+                        <div class="social-icons">
+                            <a href="https://www.linkedin.com/in/daniel-tobenna-b25992322" aria-label="LinkedIn">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6z"></path>
+                                    <rect x="2" y="9" width="4" height="12"></rect>
+                                    <circle cx="4" cy="4" r="2"></circle>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="contact-form-wrapper">
+                    <form method='post' class="contact-form" id="">
+                        {% csrf_token %}
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="firstName">First Name</label>
+                                <input type="text" id="firstName" name="firstName" required="" placeholder="John"/>
+                            </div>
+                            <div class="form-group">
+                                <label for="lastName">Last Name</label>
+                                <input type="text" id="lastName" name="lastName" required="" placeholder="Doe"/>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email Address</label>
+                            <input type="email" id="email" name="email" required="" placeholder="john@example.com"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="subject">Subject</label>
+                            <select id="subject" name="subject" required="">
+                                <option value="">Select a subject</option>
+                                <option value="general">General Inquiry</option>
+                                <option value="artist">Cost</option>
+                                <option value="press">Critics &amp; Improvement</option>
+                                <option value="partnership">Partnership Opportunity</option>
+                                <option value="support">Customer Support</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Your Message</label>
+                            <textarea id="message" name="message" rows="5" required="" placeholder="Tell us how we can help..."></textarea>
+                        </div>
+                        <button type="submit" class="submit-btn">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Map Section -->
+    <section class="map-section">
+        <div class="map-container">
+            <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3022.217676750659!2d-73.98784408459418!3d40.75797467932688!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x89c25855c6480299%3A0x55194ec5a1ae072e!2sTimes%20Square!5e0!3m2!1sen!2sus!4v1620000000000!5m2!1sen!2sus" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" title="Gallery Location">
+            </iframe>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <!--
+    <section class="faq-section">
+        <div class="container">
+            <h2 class="section-title">Frequently Asked Questions</h2>
+            <div class="faq-grid">
+                <div class="faq-item">
+                    <h4>How can I submit my artwork for GrowEasy Analytics?</h4>
+                    <p>Artists can submit their portfolios through our online submission form. We review all submissions quarterly and respond within 4-6 weeks.</p>
+                </div>
+                <div class="faq-item">
+                    <h4>Do you offer virtual gallery tours?</h4>
+                    <p>Yes! We offer immersive virtual tours for all our GrowEasy Analyticss. You can access them through our website or VR app.</p>
+                </div>
+                <div class="faq-item">
+                    <h4>Can I purchase artwork through your platform?</h4>
+                    <p>Absolutely. We facilitate direct purchases between collectors and artists, with secure payment processing and worldwide shipping.</p>
+                </div>
+                <div class="faq-item">
+                    <h4>How do I become a member?</h4>
+                    <p>Sign up for a free account on our website. Premium memberships with exclusive benefits are available for art enthusiasts and collectors.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+-->
+
+    <!-- Footer -->
+
+    <footer class="footer">
+        <div class="footer-watermark">GrowEasy Analytics</div>
+        <div class="container">
+            <div class="footer-content">
+                <div class="newsletter">
+                    <h4>Stay Connected</h4>
+                    <p>Subscribe to our newsletter for future updates and releases</p>
+                    <form method="post" action="{% url 'subscribe' %}" class="newsletter-form">
+                        <input type="email" placeholder="Your email address" required=""/>
+                        <button type="submit">Subscribe</button>
+                    </form>
+                </div>
+                <div class="footer-links">
+                    <!--
+                    <div class="link-column">
+                        <h5>Categories</h5>
+                        <ul>
+                            <li><a href="#">Art</a></li>
+                            <li><a href="#">Design</a></li>
+                            <li><a href="#">Lifestyle</a></li>
+                            <li><a href="#">Photography</a></li>
+                        </ul>
+                    </div>
+                -->
+                    <div class="link-column">
+                        <h5>Pages</h5>
+                        <ul>
+                            <li><a href="{% url 'home' %}" class="active">Home</a></li>
+                            <li><a href="{% url 'about' %}">About</a></li>
+                            <li><a href="{% url 'contact' %}">Contact</a></li>
+                            <li><a href="{% url 'login' %}">Demo</a></li>
+                        </ul>
+                    </div>
+                    <div class="link-column">
+                        <h5>Legal</h5>
+                        <ul>
+                            <li><a href="#">Privacy Policy</a></li>
+                            <li><a href="#">Terms of Service</a></li>
+                            <li><a href="#">Cookie Policy</a></li>
+                        </ul>
+                    </div>
+                    <div class="link-column">
+                        <h5>Follow Us</h5>
+                        <div class="social-links">
+                            <a href="https://www.linkedin.com/in/daniel-tobenna-b25992322" aria-label="linkedin">Linkedin</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 GrowEasy. All rights reserved.</p>
+                <button class="back-to-top" onclick="window.scrollTo({top: 0, behavior: &#39;smooth&#39;})">Back to Top</button>
+            </div>
+        </div>
+    </footer>
+
+    <script data-cfasync="false" src="/static/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="/static/script.js"></script>
+
+
+</body>
+</html>

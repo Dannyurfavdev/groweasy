@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Projects - GrowEasy</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <style>
+        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 0; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .content-card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+        .project-card { 
+            border: 2px solid #e2e8f0; 
+            border-radius: 12px; 
+            padding: 1.5rem; 
+            margin-bottom: 1rem;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .project-card:hover {
+            border-color: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+        }
+        .project-card.active {
+            border-color: #2563eb;
+            background: #eff6ff;
+        }
+        .alert-custom { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="mb-0"><i class="bi bi-building text-primary"></i> Manage Projects</h1>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Alert Messages -->
+        <div id="alert-success" class="alert alert-success alert-custom">
+            <i class="bi bi-check-circle"></i> <span id="success-message"></span>
+        </div>
+        <div id="alert-error" class="alert alert-danger alert-custom">
+            <i class="bi bi-exclamation-triangle"></i> <span id="error-message"></span>
+        </div>
+
+        <div class="row">
+            <!-- Create Project Form -->
+            <div class="col-md-5">
+                <div class="content-card">
+                    <h3 class="mb-4"><i class="bi bi-plus-circle"></i> Create New Project</h3>
+                    
+                    <form id="createProjectForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="create">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Project Name *</label>
+                            <input type="text" name="name" class="form-control form-control-lg" 
+                                   placeholder="Downtown Office Building" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Address</label>
+                            <textarea name="address" class="form-control" rows="3"
+                                      placeholder="123 Main Street, Port Harcourt, Rivers State"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-lg w-100">
+                            <i class="bi bi-plus-circle"></i> Create Project
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="content-card">
+                    <h5 class="mb-3"><i class="bi bi-graph-up text-success"></i> Your Portfolio</h5>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Total Projects:</span>
+                        <strong>{{ all_projects.count }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Active Projects:</span>
+                        <strong class="text-success">{{ all_projects.count }}</strong>
+                    </div>
+                </div>
+
+                <!-- Info Card -->
+                <div class="content-card bg-light">
+                    <h6><i class="bi bi-info-circle text-info"></i> What Happens Next?</h6>
+                    <ol class="mb-0 small">
+                        <li>Create your construction project</li>
+                        <li>Add team members' phone numbers</li>
+                        <li>Connect Google Sheets & Drive folders</li>
+                        <li>Start receiving WhatsApp updates!</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Projects List -->
+            <div class="col-md-7">
+                <div class="content-card">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3 class="mb-0"><i class="bi bi-list-ul"></i> All Projects ({{ all_projects.count }})</h3>
+                    </div>
+                    
+                    {% if all_projects %}
+                        {% for project in all_projects %}
+                        <div class="project-card" data-project-id="{{ project.id }}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h4 class="mb-2">
+                                        <i class="bi bi-building-fill text-primary"></i>
+                                        {{ project.name }}
+                                    </h4>
+                                    <p class="text-muted mb-2">
+                                        <i class="bi bi-geo-alt"></i> 
+                                        {{ project.address|default:"No address specified" }}
+                                    </p>
+                                    <small class="text-muted">
+                                        Created {{ project.created_at|timesince }} ago
+                                    </small>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary edit-btn" 
+                                            data-project-id="{{ project.id }}"
+                                            data-name="{{ project.name }}"
+                                            data-address="{{ project.address }}"
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#editModal">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                            data-project-id="{{ project.id }}"
+                                            data-name="{{ project.name }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Quick Actions -->
+                            <div class="mt-3 pt-3 border-top">
+                                <div class="d-flex gap-2">
+                                    <a href="{% url 'switch_project' project.id %}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-eye"></i> View Dashboard
+                                    </a>
+                                    <a href="{% url 'manage_contacts' %}?project={{ project.id }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-people"></i> Contacts
+                                    </a>
+                                    <a href="{% url 'manage_data_sources' %}?project={{ project.id }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-database"></i> Data Sources
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox" style="font-size: 4rem; color: #cbd5e1;"></i>
+                            <h4 class="mt-3 text-muted">No Projects Yet</h4>
+                            <p class="text-muted">Create your first construction project to get started!</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Project Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit Project</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="editProjectForm">
+                    <div class="modal-body">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="edit">
+                        <input type="hidden" name="project_id" id="edit-project-id">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Project Name *</label>
+                            <input type="text" name="name" id="edit-name" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Address</label>
+                            <textarea name="address" id="edit-address" class="form-control" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // Create Project
+        document.getElementById('createProjectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            
+            try {
+                const response = await fetch('{% url "manage_projects" %}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', data.message);
+                    setTimeout(() => {
+                        window.location.href = '{% url "dashboard" %}';
+                    }, 1500);
+                } else {
+                    showAlert('error', data.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Error creating project: ' + error);
+            }
+        });
+
+        // Edit Project - Populate Modal
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.getElementById('edit-project-id').value = e.currentTarget.dataset.projectId;
+                document.getElementById('edit-name').value = e.currentTarget.dataset.name;
+                document.getElementById('edit-address').value = e.currentTarget.dataset.address;
+            });
+        });
+
+        // Edit Project - Submit
+        document.getElementById('editProjectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            
+            try {
+                const response = await fetch('{% url "manage_projects" %}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', data.message);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('error', data.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Error updating project: ' + error);
+            }
+        });
+
+        // Delete Project
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const projectId = e.currentTarget.dataset.projectId;
+                const projectName = e.currentTarget.dataset.name;
+                
+                if (!confirm(`⚠️ Delete "${projectName}"?\n\nThis will delete all messages, files, and data sources for this project. This cannot be undone.`)) {
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('action', 'delete');
+                formData.append('project_id', projectId);
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                
+                try {
+                    const response = await fetch('{% url "manage_projects" %}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showAlert('error', data.message);
+                    }
+                } catch (error) {
+                    showAlert('error', 'Error deleting project: ' + error);
+                }
+            });
+        });
+
+        function showAlert(type, message) {
+            const alertEl = document.getElementById(`alert-${type}`);
+            const messageEl = document.getElementById(`${type}-message`);
+            
+            messageEl.textContent = message;
+            alertEl.style.display = 'block';
+            
+            setTimeout(() => {
+                alertEl.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

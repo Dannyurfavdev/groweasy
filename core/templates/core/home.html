@@ -1,0 +1,415 @@
+<!DOCTYPE html><html lang="en">
+<!-- Mirrored from qdrjpoj3s6tbk.ok.kimi.link/ by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 02 Mar 2026 14:40:32 GMT -->
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>GrowEasy Analytics- Home</title>
+    <link rel="stylesheet" href="/static/styles.css"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com/"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin=""/>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&amp;family=Roboto:wght@100;300;400;500;700;900&amp;display=swap" rel="stylesheet"/>
+</head>
+<body>
+    <!-- Custom Cursor -->
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{% url 'home' %}" class="logo">GROWEASY Analytics</a>
+            <button class="mobile-menu-btn" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="{% url 'home' %}" class="active">Home</a></li>
+                <li><a href="{% url 'about' %}">About</a></li>
+                <li><a href="{% url 'contact' %}">Contact</a></li>
+                <li><a href="{% url 'login' %}" class="login-btn">Demo</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <!-- <span class="hero-date">March 2, 2026</span> -->
+            <h1 class="hero-title">
+                <span class="title-light">Construction Decisions Shouldn&#39;t</span>
+                <span class="title-bold">Depend On Scattered Messages.</span>
+            </h1>
+            <p class="hero-description">
+                GrowEasy centralizes WhatsApp, Drive, Sheets, field updates and custom data sources into one visibility layer, and surfaces issues
+                so leadership gets to act fast before they compound.
+            </p>
+            <div class="hero-meta">
+                <span class="read-time">Request Pilot Access</span>
+            </div>
+            <a href="{% url 'contact' %}" class="cta-button">Pilot</a>
+        </div>
+        <div class="hero-image">
+            <img src="/static/messy_messages.jpg" alt="Scattered Messages"/>
+        </div>
+    </section>
+
+        <!-- Our Story -->
+        <section class="our-story">
+            <div class="container">
+                <div class="story-grid">
+                    <div class="story-image">
+                        <img src="/static/construction_breakdown.jpg" alt="Our Story"/>
+                    </div>
+                    <div class="story-content">
+                        <h2>Where Construction Communication Actually Breaks Down</h2>
+                        <p>Every project starts organized, schedules are clear and scopes are understood.</p>
+                        <p>Everyone knows the plan.</p>
+                        <p>Then the job begins. Photos start coming in through WhatsApp, voice notes get sent from the field, 
+                            drive folders grow and sheets get updated.</p>
+                        <p>Someone forwards an RFI.</p>
+                        <p>Someone misses the update.</p>
+                        <p>Nothing is technically “lost”.</p>
+                        <p>But the information becomes scattered across conversations, folders, and people.</p>
+                        <p>By the time leadership sees the full picture, the field has already adapted.</p>
+                        <p>Crews move, Schedules tighten and Decisions get made with partial context.</p>
+                        <p>Most construction problems aren’t caused by bad decisions.</p>
+                        <p>They’re caused by decisions made without visibility.</p>
+                        <p>GrowEasy Analytics exists to fix that.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    <!-- Latest Articles Section -->
+    <section class="latest-articles" id="articles">
+        <div class="container">
+            <h2 class="section-title">Latest Features</h2>
+            <div class="articles-scroll">
+                <article class="article-card">
+                    <div class="article-image">
+                        <img src="/static/voice_tanscription.jpg" alt="Voice Transcription"/>
+                    </div>
+                    <div class="article-content">
+                        <span class="article-category">Voice Transcription</span>
+                        <h3>Voice Transcription</h3>
+                        <p>Turn Field Voice Notes into Structured Data</p>
+                    </div>
+                </article>
+                <article class="article-card">
+                    <div class="article-image">
+                        <img src="/static/filtering.jpg" alt="Ai Filtering"/>
+                    </div>
+                    <div class="article-content">
+                        <span class="article-category">Ai + Filtering + Grouping</span>
+                        <h3>Ai + Filtering + Grouping</h3>
+                        <p>Centralize WhatsApp Conversations by Project</p>
+                    </div>
+                </article>
+                <article class="article-card">
+                    <div class="article-image">
+                        <img src="/static/data_aggregation.jpg" alt="Data Aggregation"/>
+                    </div>
+                    <div class="article-content">
+                        <span class="article-category">Data Aggregation</span>
+                        <h3>Data Aggregation</h3>
+                        <p>Unify Drive &amp; Sheets Updates </p>
+                    </div>
+                </article>
+                <article class="article-card">
+                    <div class="article-image">
+                        <img src="/static/contact_mapping.jpg" alt="Contact Mapping"/>
+                    </div>
+                    <div class="article-content">
+                        <span class="article-category">Contact Mapping</span>
+                        <h3>Contact Mapping</h3>
+                        <p>Map Contacts to Active Projects</p>
+                    </div>
+                </article>
+                <article class="article-card">
+                    <div class="article-image">
+                        <img src="/static/data_exportation.jpg" alt="Data Exportation"/>
+                    </div>
+                    <div class="article-content">
+                        <span class="article-category">Data Exportation</span>
+                        <h3>Data Exportation</h3>
+                        <p>Export Clean Reports for Leadership</p>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- Art Category Section -->
+    <!--
+    <section class="art-category">
+        <div class="container">
+            <div class="category-layout">
+                <aside class="category-sidebar">
+                    <div class="sidebar-section">
+                        <h4>Categories</h4>
+                        <div class="category-tags">
+                            <button class="tag active">All</button>
+                            <button class="tag">Art</button>
+                            <button class="tag">Design</button>
+                            <button class="tag">Lifestyle</button>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <h4>Upcoming Events</h4>
+                        <div class="event-item">
+                            <span class="event-date">Mar 15</span>
+                            <div class="event-info">
+                                <h5>Modern Art GrowEasy Analytics</h5>
+                                <p>New York</p>
+                            </div>
+                        </div>
+                        <div class="event-item">
+                            <span class="event-date">Mar 22</span>
+                            <div class="event-info">
+                                <h5>Sculpture Workshop</h5>
+                                <p>London</p>
+                            </div>
+                        </div>
+                        <div class="event-item">
+                            <span class="event-date">Apr 5</span>
+                            <div class="event-info">
+                                <h5>Digital Art Summit</h5>
+                                <p>Tokyo</p>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+                <div class="category-content">
+                    <div class="featured-article">
+                        <div class="featured-image">
+                            <img src="https://images.unsplash.com/photo-1577720580479-7d839d829c73?w=1200&amp;h=750&amp;fit=crop" alt="Featured Article"/>
+                            <span class="featured-badge">Featured Article</span>
+                        </div>
+                        <div class="featured-content">
+                            <h3>The Renaissance of Public Art</h3>
+                            <p>How cities around the world are transforming public spaces into open-air galleries, 
+                            making art accessible to everyone and creating new dialogues between artists and communities.</p>
+                            <a href="#" class="read-more">Continue Reading</a>
+                        </div>
+                    </div>
+                    <div class="article-grid">
+                        <article class="grid-item">
+                            <span class="grid-category">Art</span>
+                            <h4>Minimalism in Modern Architecture</h4>
+                            <span class="grid-readtime">5 min read</span>
+                        </article>
+                        <article class="grid-item">
+                            <span class="grid-category">Design</span>
+                            <h4>The Psychology of Color</h4>
+                            <span class="grid-readtime">7 min read</span>
+                        </article>
+                        <article class="grid-item">
+                            <span class="grid-category">Lifestyle</span>
+                            <h4>Art Collecting for Beginners</h4>
+                            <span class="grid-readtime">4 min read</span>
+                        </article>
+                        <article class="grid-item">
+                            <span class="grid-category">Art</span>
+                            <h4>Street Art Revolution</h4>
+                            <span class="grid-readtime">6 min read</span>
+                        </article>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+-->
+
+    <!-- Design Section -->
+    <!--
+    <section class="design-section">
+        <div class="container">
+            <h2 class="section-title">Design</h2>
+            <a href="#" class="view-more">Explore More Designs</a>
+            <div class="design-grid">
+                <div class="design-item wide">
+                    <img src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&amp;h=400&amp;fit=crop" alt="Design 1"/>
+                    <div class="design-overlay">
+                        <h4>Geometric Harmony</h4>
+                        <p>&#34;Design is intelligence made visible.&#34;</p>
+                    </div>
+                </div>
+                <div class="design-item">
+                    <img src="https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&amp;h=400&amp;fit=crop" alt="Design 2"/>
+                    <div class="design-overlay">
+                        <h4>Typography Matters</h4>
+                        <p>&#34;Letters are shapes, shapes are letters.&#34;</p>
+                    </div>
+                </div>
+                <div class="design-item tall">
+                    <img src="https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=400&amp;h=800&amp;fit=crop" alt="Design 3"/>
+                    <div class="design-overlay">
+                        <h4>Color Theory</h4>
+                        <p>&#34;Colors speak louder than words.&#34;</p>
+                    </div>
+                </div>
+                <div class="design-item">
+                    <img src="https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=400&amp;h=400&amp;fit=crop" alt="Design 4"/>
+                    <div class="design-overlay">
+                        <h4>Minimal Living</h4>
+                        <p>&#34;Less is more, more or less.&#34;</p>
+                    </div>
+                </div>
+                <div class="design-item">
+                    <img src="https://images.unsplash.com/photo-1507643179173-617d67456adb?w=400&amp;h=400&amp;fit=crop" alt="Design 5"/>
+                    <div class="design-overlay">
+                        <h4>Space &amp; Form</h4>
+                        <p>&#34;Form follows function.&#34;</p>
+                    </div>
+                </div>
+                <div class="design-item wide">
+                    <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&amp;h=400&amp;fit=crop" alt="Design 6"/>
+                    <div class="design-overlay">
+                        <h4>Abstract Thinking</h4>
+                        <p>&#34;Abstraction is the highest form of thought.&#34;</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+-->
+
+    <!-- Instagram Gallery -->
+    <!--
+    <section class="instagram-gallery">
+        <div class="container">
+            <div class="instagram-header">
+                <h3>@GrowEasy Analytics_gallery</h3>
+                <p>Follow us on Instagram for daily art inspiration</p>
+                <a href="#" class="follow-btn">Follow Us</a>
+            </div>
+            <div class="instagram-grid">
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=400&amp;h=400&amp;fit=crop" alt="Instagram 1"/>
+                    <div class="insta-overlay">
+                        <span class="likes">2.4k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1547891654-e66ed7ebb968?w=400&amp;h=400&amp;fit=crop" alt="Instagram 2"/>
+                    <div class="insta-overlay">
+                        <span class="likes">1.8k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1549887534-1541e9326642?w=400&amp;h=400&amp;fit=crop" alt="Instagram 3"/>
+                    <div class="insta-overlay">
+                        <span class="likes">3.2k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400&amp;h=400&amp;fit=crop" alt="Instagram 4"/>
+                    <div class="insta-overlay">
+                        <span class="likes">2.1k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=400&amp;h=400&amp;fit=crop" alt="Instagram 5"/>
+                    <div class="insta-overlay">
+                        <span class="likes">4.5k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1561214115-f2f134cc4912?w=400&amp;h=400&amp;fit=crop" alt="Instagram 6"/>
+                    <div class="insta-overlay">
+                        <span class="likes">1.9k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1545989253-02cc26577f88?w=400&amp;h=400&amp;fit=crop" alt="Instagram 7"/>
+                    <div class="insta-overlay">
+                        <span class="likes">2.7k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=400&amp;h=400&amp;fit=crop" alt="Instagram 8"/>
+                    <div class="insta-overlay">
+                        <span class="likes">3.1k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1577083552431-6e5fd01aa342?w=400&amp;h=400&amp;fit=crop" alt="Instagram 9"/>
+                    <div class="insta-overlay">
+                        <span class="likes">2.3k likes</span>
+                    </div>
+                </div>
+                <div class="insta-item">
+                    <img src="https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400&amp;h=400&amp;fit=crop" alt="Instagram 10"/>
+                    <div class="insta-overlay">
+                        <span class="likes">1.6k likes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+-->
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-watermark">GrowEasy Analytics</div>
+        <div class="container">
+            <div class="footer-content">
+                <div class="newsletter">
+                    <h4>Stay Connected</h4>
+                    <p>Subscribe to our newsletter for future updates and releases</p>
+                    <form method="post" action="{% url 'subscribe' %}" class="newsletter-form">
+                        <input type="email" placeholder="Your email address" required=""/>
+                        <button type="submit">Subscribe</button>
+                    </form>
+                </div>
+                <div class="footer-links">
+                    <!--
+                    <div class="link-column">
+                        <h5>Categories</h5>
+                        <ul>
+                            <li><a href="#">Art</a></li>
+                            <li><a href="#">Design</a></li>
+                            <li><a href="#">Lifestyle</a></li>
+                            <li><a href="#">Photography</a></li>
+                        </ul>
+                    </div>
+                -->
+                    <div class="link-column">
+                        <h5>Pages</h5>
+                        <ul>
+                            <li><a href="{% url 'home' %}" class="active">Home</a></li>
+                            <li><a href="{% url 'about' %}">About</a></li>
+                            <li><a href="{% url 'contact' %}">Contact</a></li>
+                            <li><a href="{% url 'login' %}">Demo</a></li>
+                        </ul>
+                    </div>
+                    <div class="link-column">
+                        <h5>Legal</h5>
+                        <ul>
+                            <li><a href="#">Privacy Policy</a></li>
+                            <li><a href="#">Terms of Service</a></li>
+                            <li><a href="#">Cookie Policy</a></li>
+                        </ul>
+                    </div>
+                    <div class="link-column">
+                        <h5>Follow Us</h5>
+                        <div class="social-links">
+                            <a href="https://www.linkedin.com/in/daniel-tobenna-b25992322" aria-label="linkedin">Linkedin</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 GrowEasy. All rights reserved.</p>
+                <button class="back-to-top" onclick="window.scrollTo({top: 0, behavior: &#39;smooth&#39;})">Back to Top</button>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/script.js"></script>
+
+
+</body>
+</html>
