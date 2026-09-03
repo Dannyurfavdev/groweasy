@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GrowEasy{% endblock %}</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger:  #ef4444;
+        }
+
+        body {
+            background: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        /* ── Header ─────────────────────────────────────── */
+        .header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 0;
+        }
+
+        /* ── Cards ──────────────────────────────────────── */
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+        }
+
+        .stat-label {
+            color: #64748b;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* ── Alerts ─────────────────────────────────────── */
+        .alert-card {
+            border-left: 4px solid var(--danger);
+            background: #fef2f2;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .alert-card.weather {
+            border-left-color: var(--warning);
+            background: #fffbeb;
+        }
+
+        /* ── Badges ─────────────────────────────────────── */
+        .badge-trade {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-location {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* ── Buttons ─────────────────────────────────────── */
+        .export-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s;
+        }
+
+        .export-btn:hover {
+            background: #1d4ed8;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        /* ── Live indicator ──────────────────────────────── */
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            animation: blink 2s infinite;
+        }
+
+        /* ── Animations ──────────────────────────────────── */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.3; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.8; }
+        }
+
+        /* ── Messages ────────────────────────────────────── */
+        .message-item {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-left: 3px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+
+        .message-item:hover {
+            border-left-color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .message-item.positive { border-left-color: var(--success); }
+        .message-item.negative { border-left-color: var(--danger); }
+
+        /* ── Photos ──────────────────────────────────────── */
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .photo-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .photo-item:hover { transform: scale(1.05); }
+
+        .photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-tag {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        /* ── Page-level extra styles ─────────────────────── */
+        {% block extra_style %}{% endblock %}
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <div class="header">
+        <div class="container-fluid px-4">
+            <div class="row align-items-center">
+
+                <div class="col-auto">
+                    <h1>
+                        <i class="bi bi-building text-primary me-1"></i>GrowEasy
+                    </h1>
+                </div>
+
+                <div class="col text-end d-flex align-items-center justify-content-end flex-wrap gap-2">
+
+                    {% block header_actions %}{% endblock %}
+
+                    <!-- Core nav links — always visible -->
+                    <a href="{% url 'dashboard' %}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+                    </a>
+                    <a href="{% url 'manage_projects' %}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-building me-1"></i>Projects
+                    </a>
+                    <a href="{% url 'manage_contacts' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-people me-1"></i>Contacts
+                    </a>
+                    <a href="{% url 'manage_data_sources' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-database me-1"></i>Data Sources
+                    </a>
+                    <a href="{% url 'meetings_list' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-file-earmark-text me-1"></i>Meetings
+                    </a>
+                    <a href="{% url 'risk_overview' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-activity me-1"></i>Risk
+                    </a>
+                    <a href="{% url 'logout' %}" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-box-arrow-right me-1"></i>Logout
+                    </a>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ── End Header ─────────────────────────────────────── -->
+
+    <!-- ── Flash messages (Django messages framework) ──────── -->
+    {% if messages %}
+    <div class="container-fluid px-4 mt-3">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- ── Page content ───────────────────────────────────── -->
+    {% block content %}{% endblock %}
+    <!-- ── End page content ──────────────────────────────── -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+
+</body>
+</html>

@@ -1,0 +1,893 @@
+{% extends "core/base.html" %}
+{% block title %}Review Meeting – {{ meeting.title|default:"Untitled" }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <!-- Header bar -->
+  <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1">
+          <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+          <li class="breadcrumb-item"><a href="{% url 'meetings_list' %}">Meetings</a></li>
+          <li class="breadcrumb-item active">Review</li>
+        </ol>
+      </nav>
+      <h2 class="fw-bold mb-1">{{ meeting.title|default:"Meeting Review" }}</h2>
+      <div class="d-flex align-items-center gap-2 text-muted small">
+        <i class="bi bi-folder2-open"></i>
+        <span>{{ meeting.project.name }}</span>
+        {% if meeting.meeting_date %}
+          <span>·</span>
+          <i class="bi bi-calendar3"></i>
+          <span>{{ meeting.meeting_date|date:"N j, Y" }}</span>
+        {% endif %}
+        <span>·</span>
+        <span>Uploaded by {{ meeting.uploaded_by.get_full_name|default:meeting.uploaded_by.username }}</span>
+      </div>
+    </div>
+
+    <!-- Approval button -->
+    <div class="d-flex gap-2 align-items-center" id="approve-btn-wrapper">
+      {% if meeting.status == "DRAFT" %}
+        <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2">
+          <i class="bi bi-clock-history me-1"></i>Awaiting your review
+        </span>
+        <button class="btn btn-success px-4" id="approve-btn" onclick="approveMeeting()">
+          <i class="bi bi-check2-circle me-2"></i>Approve & Notify
+        </button>
+      {% elif meeting.status == "APPROVED" %}
+        <span class="badge bg-success px-3 py-2">
+          <i class="bi bi-check2-circle me-1"></i>Approved
+        </span>
+      {% endif %}
+      {% if meeting.status == "APPROVED" or meeting.status == "PUSHED" %}
+        <button class="btn btn-outline-primary px-4"
+                data-bs-toggle="modal"
+                data-bs-target="#procorePushModal">
+            <i class="bi bi-cloud-upload me-2"></i>Push to Procore
+        </button>
+        {% endif %}
+    </div>
+  </div>
+
+  <!-- Summary stats -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-primary">{{ meeting.action_items.count }}</div>
+          <div class="small text-muted mt-1">Action Items</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-success">{{ meeting.decisions.count }}</div>
+          <div class="small text-muted mt-1">Decisions</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-danger">{{ meeting.blockers.count }}</div>
+          <div class="small text-muted mt-1">Blockers</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-secondary">
+            {{ meeting.action_items.all|length|add:meeting.decisions.all|length|add:meeting.blockers.all|length }}
+          </div>
+          <div class="small text-muted mt-1">Total Items</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- LEFT: Action Items -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm" id="action-items-card">
+        <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-3">
+          <h5 class="mb-0 fw-semibold">
+            <i class="bi bi-list-check text-primary me-2"></i>Action Items
+          </h5>
+          <span class="badge bg-primary-subtle text-primary">{{ meeting.action_items.count }}</span>
+        </div>
+        <div class="card-body p-0">
+          {% if meeting.action_items.all %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0" id="action-items-table">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-4 py-3">Task</th>
+                    <th class="py-3">Owner</th>
+                    <th class="py-3">Due</th>
+                    <th class="py-3 text-end pe-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in meeting.action_items.all %}
+                  <tr data-id="{{ item.id }}" class="action-item-row">
+                    <td class="ps-4 py-3" style="max-width: 260px;">
+                      <span class="item-task d-block"
+                            contenteditable="{% if meeting.status == 'DRAFT' %}true{% else %}false{% endif %}"
+                            data-field="task_description"
+                            style="cursor: {% if meeting.status == 'DRAFT' %}text{% else %}default{% endif %};">
+                        {{ item.task_description }}
+                      </span>
+                    </td>
+                    <td class="py-3">
+                      {% if item.owner %}
+                        <div class="d-flex align-items-center gap-2">
+                          <div class="avatar-sm bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold"
+                               style="width:30px;height:30px;font-size:0.75rem;">
+                            {{ item.owner.contact_name|slice:":1" }}
+                          </div>
+                          <div>
+                            <div class="small fw-semibold">{{ item.owner.contact_name }}</div>
+                          </div>
+                        </div>
+                      {% else %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                          <i class="bi bi-person-x me-1"></i>{{ item.owner_raw_name|default:"Unassigned" }}
+                        </span>
+                      {% endif %}
+                    </td>
+                    <td class="py-3">
+                      {% if item.due_date %}
+                        <span class="badge bg-light text-dark border">
+                          <i class="bi bi-calendar3 me-1"></i>{{ item.due_date|date:"M j" }}
+                        </span>
+                      {% else %}
+                        <span class="text-muted small">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="py-3 text-end pe-3">
+                      {% if meeting.status == "DRAFT" %}
+                        <button class="btn btn-sm btn-outline-danger"
+                                onclick="deleteActionItem({{ item.id }}, this)"
+                                title="Remove this item">
+                          <i class="bi bi-trash3"></i>
+                        </button>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-4 text-center text-muted">
+              <i class="bi bi-inbox display-6 d-block mb-2"></i>
+              No action items extracted.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Decisions + Blockers -->
+    <div class="col-lg-5 d-flex flex-column gap-4">
+
+      <!-- Decisions -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-3">
+          <h5 class="mb-0 fw-semibold">
+            <i class="bi bi-check2-square text-success me-2"></i>Decisions
+          </h5>
+          <span class="badge bg-success-subtle text-success">{{ meeting.decisions.count }}</span>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for dec in meeting.decisions.all %}
+            <div class="list-group-item px-4 py-3 border-0 border-bottom">
+              <p class="mb-1 small">{{ dec.description }}</p>
+              {% if dec.made_by %}
+                <small class="text-muted">
+                  <i class="bi bi-person me-1"></i>{{ dec.made_by.contact_name }}
+                </small>
+              {% elif dec.made_by_raw_name %}
+                <small class="text-muted">{{ dec.made_by_raw_name }}</small>
+              {% endif %}
+            </div>
+          {% empty %}
+            <div class="list-group-item px-4 py-3 text-muted text-center small">
+              No decisions recorded.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Blockers -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent d-flex align-items-center justify-content-between py-3">
+          <h5 class="mb-0 fw-semibold">
+            <i class="bi bi-exclamation-triangle text-danger me-2"></i>Blockers
+          </h5>
+          <span class="badge bg-danger-subtle text-danger">{{ meeting.blockers.count }}</span>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for blk in meeting.blockers.all %}
+            <div class="list-group-item px-4 py-3 border-0 border-bottom">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <p class="mb-1 small">{{ blk.description }}</p>
+                <span class="badge flex-shrink-0
+                  {% if blk.severity == 'HIGH' %}bg-danger
+                  {% elif blk.severity == 'MEDIUM' %}bg-warning text-dark
+                  {% else %}bg-secondary{% endif %}">
+                  {{ blk.severity }}
+                </span>
+              </div>
+              {% if blk.blocking_who %}
+                <small class="text-muted">
+                  <i class="bi bi-arrow-right me-1"></i>{{ blk.blocking_who }}
+                </small>
+              {% endif %}
+            </div>
+          {% empty %}
+            <div class="list-group-item px-4 py-3 text-muted text-center small">
+              No blockers identified.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Transcript preview (collapsible) -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent py-3">
+          <button class="btn btn-link text-decoration-none p-0 fw-semibold text-body"
+                  data-bs-toggle="collapse" data-bs-target="#transcript-preview">
+            <i class="bi bi-file-text me-2 text-muted"></i>Source Transcript
+            <i class="bi bi-chevron-down ms-1 text-muted small"></i>
+          </button>
+        </div>
+        <div class="collapse" id="transcript-preview">
+          <div class="card-body pt-0">
+            <pre class="small text-muted" style="max-height:200px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;">{{ meeting.transcript_text|truncatechars:2000 }}</pre>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+ 
+ <!-- ── Procore Push Modal ──────────────────────────────────── -->
+    <div class="modal fade" id="procorePushModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+    
+        <!-- Header -->
+        <div class="modal-header border-0 pb-0">
+            <div>
+            <h5 class="modal-title fw-semibold mb-0">
+                <i class="bi bi-cloud-upload text-primary me-2"></i>Push to Procore
+            </h5>
+            <p class="text-muted small mb-0 mt-1">
+                Creates a draft meeting record in Procore with action items, decisions, and blockers.
+            </p>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+    
+        <!-- Body -->
+        <div class="modal-body pt-3">
+    
+            <!-- STEP 1: Credentials -->
+            <div id="pc-step-credentials">
+            <p class="small fw-semibold text-uppercase text-muted mb-3 ls-1">
+                Step 1 of 3 — Procore credentials
+            </p>
+    
+            <div class="mb-3">
+                <label class="form-label small fw-medium">Access token</label>
+                <input type="password" class="form-control form-control-sm"
+                        id="pc-token" placeholder="Paste your OAuth access token">
+                <div class="form-text">
+                Procore → Developer Tools → OAuth credentials.
+                </div>
+            </div>
+    
+            <div class="row g-3 mb-3">
+                <div class="col">
+                <label class="form-label small fw-medium">Company ID</label>
+                <input type="text" class="form-control form-control-sm"
+                        id="pc-company" placeholder="e.g. 12345">
+                </div>
+                <div class="col">
+                <label class="form-label small fw-medium">Procore project ID</label>
+                <input type="text" class="form-control form-control-sm"
+                        id="pc-project" placeholder="e.g. 67890">
+                </div>
+            </div>
+    
+            <div id="pc-creds-error" class="alert alert-danger small py-2 d-none"></div>
+            </div>
+    
+            <!-- STEP 2: Dry run preview -->
+            <div id="pc-step-preview" class="d-none">
+            <p class="small fw-semibold text-uppercase text-muted mb-3">
+                Step 2 of 3 — Review what will be pushed
+            </p>
+    
+            <!-- Summary cards -->
+            <div class="row g-2 mb-3" id="pc-summary-cards"></div>
+    
+            <!-- Action items table with assignee overrides -->
+            <div class="card border-0 bg-light mb-3">
+                <div class="card-header bg-transparent border-0 pb-0">
+                <h6 class="fw-semibold mb-0 small">
+                    <i class="bi bi-list-check me-1 text-primary"></i>Action Items
+                    <span class="text-muted fw-normal ms-1">— edit assignees before pushing</span>
+                </h6>
+                </div>
+                <div class="card-body pt-2 p-3">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0" id="pc-items-table">
+                    <thead class="table-light">
+                        <tr>
+                        <th style="width:50%">Task</th>
+                        <th>Assignee</th>
+                        <th>Due</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pc-items-body"></tbody>
+                    </table>
+                </div>
+                </div>
+            </div>
+    
+            <!-- Decisions preview -->
+            <div id="pc-decisions-block" class="mb-3 d-none">
+                <h6 class="fw-semibold small mb-2">
+                <i class="bi bi-check2-square me-1 text-success"></i>Decisions
+                <span class="text-muted fw-normal">(added as meeting notes)</span>
+                </h6>
+                <ul class="list-unstyled small text-muted mb-0" id="pc-decisions-list"></ul>
+            </div>
+    
+            <!-- Blockers preview -->
+            <div id="pc-blockers-block" class="mb-2 d-none">
+                <h6 class="fw-semibold small mb-2">
+                <i class="bi bi-exclamation-triangle me-1 text-danger"></i>Blockers
+                <span class="text-muted fw-normal">(added as meeting notes)</span>
+                </h6>
+                <ul class="list-unstyled small text-muted mb-0" id="pc-blockers-list"></ul>
+            </div>
+    
+            <div id="pc-preview-error" class="alert alert-danger small py-2 d-none"></div>
+            </div>
+    
+            <!-- STEP 3: Pushing progress -->
+            <div id="pc-step-pushing" class="d-none text-center py-4">
+            <div class="spinner-border spinner-border-sm text-primary mb-3" role="status"></div>
+            <p class="small text-muted mb-0" id="pc-push-msg">
+                Connecting to Procore…
+            </p>
+            </div>
+    
+            <!-- STEP 4: Result -->
+            <div id="pc-step-result" class="d-none">
+            <div class="text-center mb-4">
+                <div id="pc-result-icon" class="display-5 mb-2">✅</div>
+                <h5 class="fw-semibold" id="pc-result-title">Pushed to Procore</h5>
+                <p class="text-muted small" id="pc-result-subtitle"></p>
+            </div>
+    
+            <div class="row g-2 text-center mb-3" id="pc-result-cards"></div>
+    
+            <div id="pc-failures-block" class="d-none">
+                <p class="small fw-semibold text-danger mb-1">
+                <i class="bi bi-exclamation-triangle me-1"></i>Some items failed to push:
+                </p>
+                <ul class="list-unstyled small text-muted" id="pc-failures-list"></ul>
+            </div>
+    
+            <div class="text-center mt-3">
+                <a href="#" id="pc-procore-link" target="_blank"
+                    class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Open in Procore
+                </a>
+            </div>
+            </div>
+    
+        </div>
+    
+        <!-- Footer -->
+        <div class="modal-footer border-0 pt-0" id="pc-footer">
+            <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal"
+                    id="pc-cancel-btn">Cancel</button>
+            <button class="btn btn-sm btn-outline-primary" id="pc-back-btn"
+                    onclick="pcGoBack()" style="display:none;">
+            <i class="bi bi-arrow-left me-1"></i>Back
+            </button>
+            <button class="btn btn-sm btn-primary" id="pc-next-btn"
+                    onclick="pcNext()">
+            <i class="bi bi-eye me-1"></i>Preview push
+            </button>
+        </div>
+    
+        </div>
+    </div>
+    </div>
+    
+    <script>
+    // ── State ──────────────────────────────────────────────────
+    const PC_MEETING_ID   = {{ meeting.id }};
+    const PC_DRY_RUN_URL  = `/meetings/${PC_MEETING_ID}/procore-dry-run/`;
+    const PC_PUSH_URL     = `/meetings/${PC_MEETING_ID}/procore-push/`;
+    const PC_CSRF         = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+    
+    let pcStep       = 1;   // 1=creds, 2=preview, 3=pushing, 4=result
+    let pcSummary    = null; // dry run result
+    
+    // ── Step navigation ────────────────────────────────────────
+    function pcShowStep(n) {
+    pcStep = n;
+    document.getElementById('pc-step-credentials').classList.toggle('d-none', n !== 1);
+    document.getElementById('pc-step-preview').classList.toggle('d-none',     n !== 2);
+    document.getElementById('pc-step-pushing').classList.toggle('d-none',     n !== 3);
+    document.getElementById('pc-step-result').classList.toggle('d-none',      n !== 4);
+    
+    const nextBtn = document.getElementById('pc-next-btn');
+    const backBtn = document.getElementById('pc-back-btn');
+    
+    if (n === 1) {
+        nextBtn.style.display = '';
+        nextBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Preview push';
+        backBtn.style.display = 'none';
+    } else if (n === 2) {
+        nextBtn.style.display = '';
+        nextBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Push to Procore';
+        backBtn.style.display = '';
+    } else {
+        nextBtn.style.display = 'none';
+        backBtn.style.display = 'none';
+        if (n === 4) {
+        document.getElementById('pc-cancel-btn').textContent = 'Close';
+        }
+    }
+    }
+    
+    function pcGoBack() {
+    if (pcStep === 2) pcShowStep(1);
+    }
+    
+    function pcNext() {
+    if (pcStep === 1) pcRunDryRun();
+    else if (pcStep === 2) pcRunPush();
+    }
+    
+    // ── Credentials ────────────────────────────────────────────
+    function pcGetCreds() {
+    return {
+        access_token:       document.getElementById('pc-token').value.trim(),
+        company_id:         document.getElementById('pc-company').value.trim(),
+        procore_project_id: document.getElementById('pc-project').value.trim(),
+    };
+    }
+    
+    // ── Dry run ────────────────────────────────────────────────
+    function pcRunDryRun() {
+    const creds = pcGetCreds();
+    const errEl = document.getElementById('pc-creds-error');
+    errEl.classList.add('d-none');
+    
+    const missing = [];
+    if (!creds.access_token)       missing.push('Access token');
+    if (!creds.company_id)         missing.push('Company ID');
+    if (!creds.procore_project_id) missing.push('Procore project ID');
+    if (missing.length) {
+        errEl.textContent = `Please fill in: ${missing.join(', ')}`;
+        errEl.classList.remove('d-none');
+        return;
+    }
+    
+    const nextBtn = document.getElementById('pc-next-btn');
+    nextBtn.disabled = true;
+    nextBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading preview…';
+    
+    fetch(PC_DRY_RUN_URL, {
+        method:  'POST',
+        headers: { 'X-CSRFToken': PC_CSRF, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(creds),
+    })
+    .then(r => r.json())
+    .then(data => {
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Preview push';
+    
+        if (!data.success) {
+        errEl.textContent = data.error || 'Preview failed.';
+        errEl.classList.remove('d-none');
+        return;
+        }
+    
+        pcSummary = data.summary;
+        pcRenderPreview(data.summary);
+        pcShowStep(2);
+    })
+    .catch(() => {
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Preview push';
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.remove('d-none');
+    });
+    }
+    
+    function pcRenderPreview(s) {
+    // Summary cards
+    document.getElementById('pc-summary-cards').innerHTML = [
+        { label: 'Action Items', value: s.action_item_count, color: 'primary' },
+        { label: 'Assigned',     value: s.assigned_count,    color: 'success' },
+        { label: 'Unassigned',   value: s.unassigned_count,  color: s.unassigned_count > 0 ? 'warning' : 'secondary' },
+        { label: 'Decisions',    value: s.decision_count,    color: 'info'    },
+        { label: 'Blockers',     value: s.blocker_count,     color: 'danger'  },
+    ].map(c => `
+        <div class="col">
+        <div class="bg-light rounded-3 p-2 text-center border">
+            <div class="fw-bold fs-5 text-${c.color}">${c.value}</div>
+            <div class="text-muted" style="font-size:11px">${c.label}</div>
+        </div>
+        </div>
+    `).join('');
+    
+    // Action items table with editable assignee fields
+    const tbody = document.getElementById('pc-items-body');
+    tbody.innerHTML = s.action_items.map(item => {
+        const dueBadge = item.due_date
+        ? `<span class="badge bg-light text-dark border">${item.due_date}</span>`
+        : `<span class="text-muted">—</span>`;
+    
+        const assigneeVal = item.owner_name || '';
+        const assigneeInput = `
+        <input type="text"
+                class="form-control form-control-sm assignee-override"
+                data-item-id="${item.id}"
+                value="${assigneeVal}"
+                placeholder="${item.is_unassigned ? 'Type a name or leave blank' : ''}"
+                style="min-width:130px;">
+        `;
+    
+        const rowClass = item.is_unassigned ? 'table-warning' : '';
+    
+        return `
+        <tr class="${rowClass}">
+            <td class="small">${item.task}</td>
+            <td>${assigneeInput}</td>
+            <td>${dueBadge}</td>
+        </tr>
+        `;
+    }).join('');
+    
+    // Decisions
+    if (s.decisions && s.decisions.length > 0) {
+        document.getElementById('pc-decisions-block').classList.remove('d-none');
+        document.getElementById('pc-decisions-list').innerHTML = s.decisions
+        .map(d => `<li class="mb-1">• ${d.description}</li>`).join('');
+    }
+    
+    // Blockers
+    if (s.blockers && s.blockers.length > 0) {
+        document.getElementById('pc-blockers-block').classList.remove('d-none');
+        document.getElementById('pc-blockers-list').innerHTML = s.blockers
+        .map(b => `<li class="mb-1">• <span class="badge bg-${b.severity === 'HIGH' ? 'danger' : b.severity === 'MEDIUM' ? 'warning text-dark' : 'secondary'} me-1">${b.severity}</span>${b.description}</li>`)
+        .join('');
+    }
+    }
+    
+    // ── Real push ──────────────────────────────────────────────
+    function pcRunPush() {
+    const creds = pcGetCreds();
+    
+    // Collect PM-edited assignee names
+    const assigneeOverrides = {};
+    document.querySelectorAll('.assignee-override').forEach(input => {
+        assigneeOverrides[input.dataset.itemId] = input.value.trim();
+    });
+    
+    pcShowStep(3);
+    
+    const messages = [
+        'Connecting to Procore…',
+        'Creating meeting record…',
+        'Pushing action items…',
+        'Finalising…',
+    ];
+    let msgIdx = 0;
+    const msgEl = document.getElementById('pc-push-msg');
+    const msgTimer = setInterval(() => {
+        msgIdx = Math.min(msgIdx + 1, messages.length - 1);
+        msgEl.textContent = messages[msgIdx];
+    }, 2000);
+    
+    fetch(PC_PUSH_URL, {
+        method:  'POST',
+        headers: { 'X-CSRFToken': PC_CSRF, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+        ...creds,
+        assignee_overrides: assigneeOverrides,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        clearInterval(msgTimer);
+    
+        if (!data.success) {
+        // Go back to preview with error
+        pcShowStep(2);
+        const errEl = document.getElementById('pc-preview-error');
+        errEl.textContent = data.error || 'Push failed. Check your credentials.';
+        errEl.classList.remove('d-none');
+        return;
+        }
+    
+        pcRenderResult(data);
+        pcShowStep(4);
+    })
+    .catch(() => {
+        clearInterval(msgTimer);
+        pcShowStep(2);
+        const errEl = document.getElementById('pc-preview-error');
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.remove('d-none');
+    });
+    }
+    
+    function pcRenderResult(data) {
+    document.getElementById('pc-result-title').textContent =
+        data.items_failed > 0 ? 'Pushed with some failures' : 'Successfully pushed to Procore';
+    document.getElementById('pc-result-icon').textContent =
+        data.items_failed > 0 ? '⚠️' : '✅';
+    document.getElementById('pc-result-subtitle').textContent =
+        `Meeting record created in Procore as a draft. Review and publish there.`;
+    
+    document.getElementById('pc-result-cards').innerHTML = [
+        { label: 'Items pushed',  value: data.items_pushed,  color: 'success' },
+        { label: 'Items failed',  value: data.items_failed,  color: data.items_failed > 0 ? 'danger' : 'secondary' },
+    ].map(c => `
+        <div class="col">
+        <div class="bg-light rounded-3 p-3 text-center border">
+            <div class="fw-bold fs-4 text-${c.color}">${c.value}</div>
+            <div class="text-muted small">${c.label}</div>
+        </div>
+        </div>
+    `).join('');
+    
+    if (data.failures && data.failures.length > 0) {
+        document.getElementById('pc-failures-block').classList.remove('d-none');
+        document.getElementById('pc-failures-list').innerHTML = data.failures
+        .map(f => `<li>• ${f.task} — <span class="text-danger">${f.error}</span></li>`)
+        .join('');
+    }   
+    
+    if (data.procore_meeting_url) {
+        const link = document.getElementById('pc-procore-link');
+        link.href = data.procore_meeting_url;
+        link.classList.remove('d-none');
+    }
+    }
+    
+    // Reset modal state when closed
+    document.getElementById('procorePushModal').addEventListener('hidden.bs.modal', () => {
+    pcShowStep(1);
+    pcSummary = null;
+    document.getElementById('pc-creds-error').classList.add('d-none');
+    document.getElementById('pc-preview-error').classList.add('d-none');
+    document.getElementById('pc-cancel-btn').textContent = 'Cancel';
+    document.getElementById('pc-decisions-block').classList.add('d-none');
+    document.getElementById('pc-blockers-block').classList.add('d-none');
+    document.getElementById('pc-failures-block').classList.add('d-none');
+    document.getElementById('pc-procore-link').classList.add('d-none');
+    });
+    </script>
+
+
+
+
+
+  <!-- Approval toast -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 9999;">
+    <div id="approve-toast" class="toast align-items-center text-bg-success border-0" role="alert">
+      <div class="d-flex">
+        <div class="toast-body">
+          <i class="bi bi-check2-circle me-2"></i>
+          <span id="toast-msg">Meeting approved! Notifications sent.</span>
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const MEETING_ID  = {{ meeting.id }};
+  const IS_DRAFT    = {% if meeting.status == "DRAFT" %}true{% else %}false{% endif %};
+  const APPROVE_URL = `/meetings/${MEETING_ID}/approve/`;
+  const CSRF        = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+  // ── Shared: render approved state ────────────────────
+  function showApproved(notified, ownerless) {
+    const wrapper = document.getElementById('approve-btn-wrapper');
+    wrapper.innerHTML = '<span class="badge bg-success px-3 py-2"><i class="bi bi-check2-circle me-1"></i>Approved</span>';
+
+    const banner = document.getElementById('unassigned-banner');
+    if (banner) banner.remove();
+
+    let msg = notified > 0
+      ? `Approved! WhatsApp sent to ${notified} team member${notified > 1 ? 's' : ''}.`
+      : 'Approved!';
+    if (ownerless > 0) {
+      msg += ` ${ownerless} action item${ownerless > 1 ? 's have' : ' has'} no owner — assign manually if needed.`;
+    }
+    document.getElementById('toast-msg').textContent = msg;
+    new bootstrap.Toast(document.getElementById('approve-toast')).show();
+  }
+
+  // ── Shared: render unassigned warning banner ──────────
+  function showUnassignedBanner(unassigned, ownerless) {
+    const existing = document.getElementById('unassigned-banner');
+    if (existing) existing.remove();
+
+    const named = unassigned.filter(n => n && n.trim() !== '');
+
+    let nameText = '';
+    if (named.length > 0) {
+      const nameList = named.map(n => `<strong>${n}</strong>`).join(', ');
+      nameText += `${nameList} — ${named.length === 1 ? 'this name appears' : 'these names appear'} 
+        in the transcript but ${named.length === 1 ? "isn't" : "aren't"} a project contact yet. 
+        They may be a nickname for someone already in your contacts.`;
+    }
+    if (ownerless > 0) {
+      if (nameText) nameText += ' ';
+      nameText += `${ownerless} action item${ownerless > 1 ? 's have' : ' has'} no owner identified at all.`;
+    }
+
+    const banner = document.createElement('div');
+    banner.id = 'unassigned-banner';
+    banner.className = 'alert alert-warning alert-dismissible fade show m-3';
+    banner.innerHTML = `
+      <strong><i class="bi bi-person-exclamation me-1"></i>Cannot approve yet — unresolved owners.</strong>
+      <p class="mb-2 mt-1 small">${nameText}</p>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'manage_contacts' %}" class="btn btn-sm btn-warning">
+          <i class="bi bi-person-plus me-1"></i>Add to contacts
+        </a>
+        <button class="btn btn-sm btn-outline-secondary" onclick="approveSkipUnassigned(this)">
+          <i class="bi bi-skip-forward me-1"></i>Skip & approve anyway
+        </button>
+        <button class="btn btn-sm btn-outline-secondary"
+                onclick="document.getElementById('transcript-preview').classList.add('show');
+                         document.getElementById('transcript-preview').scrollIntoView({behavior:'smooth'});">
+          <i class="bi bi-file-text me-1"></i>Review transcript
+        </button>
+      </div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    const card = document.getElementById('action-items-card');
+    card.insertBefore(banner, card.querySelector('.card-body') || card.firstChild);
+  }
+
+  // ── Approve (first attempt) ───────────────────────────
+  function approveMeeting() {
+    const btn = document.getElementById('approve-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Approving…';
+
+    fetch(APPROVE_URL, {
+      method:  'POST',
+      headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({}),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'approved') {
+        showApproved(data.notified, data.ownerless_count || 0);
+
+      } else if (data.error === 'unassigned_owners') {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-2"></i>Approve & Notify';
+        showUnassignedBanner(data.unassigned || [], data.ownerless_count || 0);
+
+      } else {
+        alert('Approval failed: ' + (data.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-2"></i>Approve & Notify';
+      }
+    })
+    .catch(() => {
+      alert('Network error. Please try again.');
+      const btn = document.getElementById('approve-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-2"></i>Approve & Notify';
+      }
+    });
+  }
+
+  // ── Skip & approve (force=true) ───────────────────────
+  function approveSkipUnassigned(btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Approving…';
+
+    fetch(APPROVE_URL, {
+      method:  'POST',
+      headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ force: true }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'approved') {
+        showApproved(data.notified, data.ownerless_count || 0);
+      } else {
+        alert('Approval failed: ' + (data.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-skip-forward me-1"></i>Skip & approve anyway';
+      }
+    })
+    .catch(() => {
+      alert('Network error. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-skip-forward me-1"></i>Skip & approve anyway';
+    });
+  }
+
+  // ── Delete action item ────────────────────────────────
+  function deleteActionItem(id, btn) {
+    if (!confirm('Remove this action item?')) return;
+    fetch(`/action-items/${id}/delete/`, {
+      method:  'POST',
+      headers: { 'X-CSRFToken': CSRF },
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.deleted) {
+        const row = btn.closest('tr');
+        row.style.opacity = '0';
+        row.style.transition = 'opacity 0.2s';
+        setTimeout(() => row.remove(), 200);
+      }
+    });
+  }
+
+  // ── Inline edit (task field) ──────────────────────────
+  document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+    let original = el.textContent.trim();
+
+    el.addEventListener('blur', () => {
+      const newVal = el.textContent.trim();
+      if (newVal === original) return;
+
+      const row = el.closest('tr');
+      const id  = row.dataset.id;
+
+      fetch(`/action-items/${id}/update/`, {
+        method:  'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ task_description: newVal }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.saved) {
+          original = newVal;
+          el.style.background = '#d1e7dd';
+          setTimeout(() => el.style.background = '', 800);
+        }
+      });
+    });
+
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    });
+  });
+</script>
+{% endblock %}

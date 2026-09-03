@@ -30,6 +30,114 @@ class ProjectContact(models.Model):
         return f"{self.contact_name} ({self.phone_number}) → {self.project.name}"
 
 
+class MeetingRecord(models.Model):
+    """
+    Stores an uploaded meeting transcript and its extraction status.
+    One MeetingRecord per meeting upload — linked to a specific project.
+    """
+
+    class Status(models.TextChoices):
+        PENDING    = "PENDING",   "Pending Extraction"
+        EXTRACTING = "EXTRACTING","Extracting..."
+        DRAFT      = "DRAFT",     "Draft – Awaiting Review"
+        APPROVED   = "APPROVED",  "Approved"
+        PUSHED     = "PUSHED",    "Pushed to Procore"
+        FAILED     = "FAILED",    "Extraction Failed"
+
+    project         = models.ForeignKey("Project", on_delete=models.CASCADE, related_name="meetings")
+    title           = models.CharField(max_length=255, blank=True, help_text="Auto-generated if blank")
+    meeting_date    = models.DateField(null=True, blank=True, help_text="Extracted from transcript or set by PM")
+    transcript_text = models.TextField()
+    raw_ai_json     = models.JSONField(null=True, blank=True, help_text="Raw GPT-4 response for debugging")
+    status          = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    uploaded_by     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="uploaded_meetings")
+    error_message   = models.TextField(blank=True, help_text="Populated if extraction fails")
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title or 'Untitled Meeting'} – {self.project.name}"
+
+    @property
+    def total_items(self):
+        return (
+            self.action_items.count()
+            + self.decisions.count()
+            + self.blockers.count()
+        )
+
+
+class ActionItem(models.Model):
+    """A task extracted from the meeting, assigned to a contact."""
+
+    class Status(models.TextChoices):
+        OPEN        = "OPEN",       "Open"
+        IN_PROGRESS = "IN_PROGRESS","In Progress"
+        DONE        = "DONE",       "Done"
+        CANCELLED   = "CANCELLED",  "Cancelled"
+
+    meeting          = models.ForeignKey(MeetingRecord, on_delete=models.CASCADE, related_name="action_items")
+    task_description = models.TextField()
+    owner            = models.ForeignKey(
+        "ProjectContact", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="action_items",
+        help_text="Resolved from transcript name → project contact"
+    )
+    owner_raw_name   = models.CharField(max_length=100, blank=True, help_text="Name as it appeared in transcript")
+    due_date         = models.DateField(null=True, blank=True)
+    status           = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    procore_record_id = models.CharField(max_length=100, blank=True, help_text="Procore ID after push")
+    notified_at      = models.DateTimeField(null=True, blank=True, help_text="When WhatsApp notification was sent")
+    created_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["due_date", "created_at"]
+
+    def __str__(self):
+        return f"{self.task_description[:60]} → {self.owner_raw_name or 'Unassigned'}"
+
+
+class Decision(models.Model):
+    """A decision recorded during the meeting."""
+
+    meeting     = models.ForeignKey(MeetingRecord, on_delete=models.CASCADE, related_name="decisions")
+    description = models.TextField()
+    made_by     = models.ForeignKey(
+        "ProjectContact", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="decisions_made"
+    )
+    made_by_raw_name = models.CharField(max_length=100, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.description[:80]
+
+
+class Blocker(models.Model):
+    """A blocker or risk item raised during the meeting."""
+
+    class Severity(models.TextChoices):
+        LOW    = "LOW",    "Low"
+        MEDIUM = "MEDIUM", "Medium"
+        HIGH   = "HIGH",   "High"
+
+    meeting      = models.ForeignKey(MeetingRecord, on_delete=models.CASCADE, related_name="blockers")
+    description  = models.TextField()
+    blocking_who = models.CharField(max_length=255, blank=True)
+    severity     = models.CharField(max_length=10, choices=Severity.choices, default=Severity.MEDIUM)
+    resolved     = models.BooleanField(default=False)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-severity", "created_at"]
+
+    def __str__(self):
+        return f"[{self.severity}] {self.description[:60]}"
+
+
 class Message(models.Model):
     """WhatsApp messages with AI analysis"""
     SENTIMENT_CHOICES = [
@@ -235,4 +343,6 @@ class RiskSnapshot(models.Model):
             'medium': 'warning',
             'high': 'danger'
         }.get(self.risk_level, 'secondary')
+
+
 

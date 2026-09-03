@@ -1,0 +1,149 @@
+{% extends "core/base.html" %}
+{% block title %}Meeting Transcripts – GrowEasy{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1">Meeting Transcripts</h2>
+      <p class="text-muted mb-0">Upload transcripts from any source. AI extracts the work.</p>
+    </div>
+    <a href="{% url 'upload_meeting' %}" class="btn btn-primary">
+      <i class="bi bi-plus-lg me-2"></i>Upload Transcript
+    </a>
+  </div>
+
+  <!-- Project filter -->
+  {% if projects %}
+  <div class="mb-4">
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{% url 'meetings_list' %}"
+         class="btn btn-sm {% if not project_id %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        All projects
+      </a>
+      {% for p in projects %}
+        <a href="?project={{ p.id }}"
+           class="btn btn-sm {% if project_id == p.id|stringformat:'s' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          {{ p.name }}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Meetings table -->
+  {% if meetings %}
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-4 py-3">Meeting</th>
+            <th class="py-3">Project</th>
+            <th class="py-3">Items</th>
+            <th class="py-3">Status</th>
+            <th class="py-3">Uploaded</th>
+            <th class="py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in meetings %}
+          <tr>
+            <td class="ps-4 py-3">
+              <div class="fw-semibold">{{ m.title|default:"Untitled Meeting" }}</div>
+              {% if m.meeting_date %}
+                <small class="text-muted">
+                  <i class="bi bi-calendar3 me-1"></i>{{ m.meeting_date|date:"N j, Y" }}
+                </small>
+              {% endif %}
+            </td>
+            <td class="py-3">
+              <span class="badge bg-light text-dark border">{{ m.project.name }}</span>
+            </td>
+            <td class="py-3">
+              {% if m.status == "DRAFT" or m.status == "APPROVED" or m.status == "PUSHED" %}
+                <small class="text-muted">
+                  {{ m.action_items.count }}
+                  <i class="bi bi-list-check ms-1"></i>
+                  &nbsp;{{ m.decisions.count }}
+                  <i class="bi bi-check2-square ms-1"></i>
+                  &nbsp;{{ m.blockers.count }}
+                  <i class="bi bi-exclamation-triangle ms-1"></i>
+                </small>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+            <td class="py-3">
+              {% if m.status == "PENDING" or m.status == "EXTRACTING" %}
+                <span class="badge bg-info-subtle text-info border border-info-subtle">
+                  <span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem;"></span>
+                  Processing
+                </span>
+              {% elif m.status == "DRAFT" %}
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                  <i class="bi bi-clock me-1"></i>Needs review
+                </span>
+              {% elif m.status == "APPROVED" %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                  <i class="bi bi-check2-circle me-1"></i>Approved
+                </span>
+              {% elif m.status == "PUSHED" %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                  <i class="bi bi-cloud-check me-1"></i>In Procore
+                </span>
+              {% elif m.status == "FAILED" %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                  <i class="bi bi-x-circle me-1"></i>Failed
+                </span>
+              {% endif %}
+            </td>
+            <td class="py-3">
+              <small class="text-muted">{{ m.created_at|date:"M j" }}</small>
+            </td>
+            <td class="py-3 pe-4">
+              {% if m.status == "DRAFT" %}
+                <a href="{% url 'meeting_review' m.id %}" class="btn btn-sm btn-primary">
+                  Review <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+              {% elif m.status == "PENDING" or m.status == "EXTRACTING" %}
+                <a href="{% url 'meeting_status' m.id %}" class="btn btn-sm btn-outline-secondary">
+                  View status
+                </a>
+              {% elif m.status == "APPROVED" or m.status == "PUSHED" %}
+                <a href="{% url 'meeting_review' m.id %}" class="btn btn-sm btn-outline-secondary">
+                  View
+                </a>
+              {% elif m.status == "FAILED" %}
+                <a href="{% url 'upload_meeting' %}" class="btn btn-sm btn-outline-danger">
+                  Retry
+                </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% else %}
+  <!-- Empty state -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5">
+      <i class="bi bi-file-earmark-text display-3 text-muted mb-3 d-block"></i>
+      <h5 class="fw-semibold mb-1">No meeting transcripts yet</h5>
+      <p class="text-muted mb-4">
+        Upload a transcript from Fireflies, Otter.ai, Zoom, or anywhere else.<br>
+        AI extracts the action items. You review. Done.
+      </p>
+      <a href="{% url 'upload_meeting' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-2"></i>Upload your first transcript
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

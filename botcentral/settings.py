@@ -43,7 +43,16 @@ SECRET_KEY = config('SECRET_KEY', default='')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [
+    'groweasyanalytics.com',
+    'www.groweasyanalytics.com',
+    '72.61.103.193',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://groweasyanalytics.com',
+    'https://www.groweasyanalytics.com',
+]
 
 
 # Application definition

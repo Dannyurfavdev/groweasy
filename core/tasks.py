@@ -487,3 +487,129 @@ def calculate_project_risk(project_id=None):
             logger.error(f"[RiskPulse] Failed for project {project.id}: {e}", exc_info=True)
 
     return f"Risk snapshots computed for {projects.count()} projects"
+
+
+############# PROCESS MEETING TASKS AND NOTIFY ACTION ITEM OWNERS #####################
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=30)
+def process_meeting_transcript(self, meeting_record_id: int):
+    """
+    Async Celery task: runs GPT-4 extraction on a MeetingRecord.
+    Called immediately after upload. PM sees status → EXTRACTING → DRAFT.
+
+    Retries up to 2 times on transient failures (network, rate limit).
+    """
+    try:
+        from core.meeting_extractor import process_transcript
+        logger.info("Starting extraction for MeetingRecord id=%s", meeting_record_id)
+        process_transcript(meeting_record_id)
+        logger.info("Extraction complete for MeetingRecord id=%s", meeting_record_id)
+
+    except Exception as exc:
+        logger.warning(
+            "Extraction failed for MeetingRecord id=%s: %s — retrying",
+            meeting_record_id, exc
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task
+def notify_action_item_owners(meeting_record_id: int):
+    """
+    After PM approves a meeting, send WhatsApp messages to action item owners.
+    Only sends to contacts who have a phone number and haven't been notified yet.
+    """
+    from core.models import MeetingRecord, ActionItem
+    from django.utils import timezone
+
+    try:
+        meeting = MeetingRecord.objects.select_related("project").get(id=meeting_record_id)
+    except MeetingRecord.DoesNotExist:
+        logger.error("MeetingRecord %s not found for notifications", meeting_record_id)
+        return
+
+    items = ActionItem.objects.filter(
+        meeting=meeting,
+        owner__isnull=False,
+        notified_at__isnull=True,          # Not yet notified
+        status=ActionItem.Status.OPEN,
+    ).select_related("owner")
+
+    if not items.exists():
+        logger.info("No notifiable action items for meeting %s", meeting_record_id)
+        return
+
+    sent_count = 0
+    for item in items:
+        phone = item.owner.phone_number
+        if not phone:
+            continue
+
+        message = _build_whatsapp_message(item, meeting)
+        success = _send_whatsapp(phone, message)
+
+        if success:
+            item.notified_at = timezone.now()
+            item.save(update_fields=["notified_at"])
+            sent_count += 1
+
+    logger.info(
+        "Sent %s WhatsApp notifications for meeting %s",
+        sent_count, meeting_record_id
+    )
+
+
+def _build_whatsapp_message(action_item, meeting) -> str:
+    due_str = (
+        action_item.due_date.strftime("%b %d, %Y")
+        if action_item.due_date
+        else "No deadline set"
+    )
+    owner_first = action_item.owner.contact_name.split()[0] if action_item.owner else "Hi"
+    project_name = meeting.project.name
+    meeting_title = meeting.title or "recent meeting"
+
+    return (
+        f"Hi {owner_first} 👋\n\n"
+        f"You have an action item from the *{meeting_title}* "
+        f"on project *{project_name}*:\n\n"
+        f"📋 *Task:* {action_item.task_description}\n"
+        f"📅 *Due:* {due_str}\n\n"
+        f"Reply *DONE* when complete, or *BLOCKED* if you need help."
+    )
+
+
+def _send_whatsapp(phone: str, message: str) -> bool:
+    """
+    Sends a WhatsApp message via Twilio.
+    Reuses same Twilio config already in settings.
+    Returns True on success.
+    """
+    import os
+    try:
+        from twilio.rest import Client
+        from django.conf import settings
+        account_sid = getattr(settings, "TWILIO_ACCOUNT_SID", None)
+        auth_token  = getattr(settings, "TWILIO_AUTH_TOKEN", None)
+        from_number = getattr(settings, "TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+
+        if not account_sid or not auth_token:
+            logger.warning("Twilio credentials not configured — skipping WhatsApp send")
+            return False
+
+        client = Client(account_sid, auth_token)
+
+        # Normalize phone to whatsapp: format
+        to_number = phone if phone.startswith("whatsapp:") else f"whatsapp:{phone}"
+
+        client.messages.create(
+            from_=from_number,
+            to=to_number,
+            body=message,
+        )
+        return True
+
+    except Exception as exc:
+        logger.error("WhatsApp send failed to %s: %s", phone, exc)
+        return False
+

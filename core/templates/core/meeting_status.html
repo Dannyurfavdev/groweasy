@@ -1,0 +1,181 @@
+{% extends "core/base.html" %}
+{% block title %}Processing Transcript – GrowEasy{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-5 text-center">
+
+      <!-- Animated icon -->
+      <div class="processing-ring mb-4">
+        <div class="spinner-ring"></div>
+        <i class="bi bi-stars processing-icon"></i>
+      </div>
+
+      <h3 class="fw-bold mb-2" id="status-title">Analyzing transcript…</h3>
+      <p class="text-muted mb-4" id="status-subtitle">
+        AI is reading your meeting and extracting action items, decisions, and blockers.
+      </p>
+
+      <!-- Progress steps -->
+      <div class="steps-list text-start mx-auto mb-4" style="max-width: 320px;">
+        <div class="step-row" id="step-reading">
+          <span class="step-dot pending"></span>
+          <span class="step-label">Reading transcript</span>
+        </div>
+        <div class="step-row" id="step-matching">
+          <span class="step-dot pending"></span>
+          <span class="step-label">Matching names to contacts</span>
+        </div>
+        <div class="step-row" id="step-extracting">
+          <span class="step-dot pending"></span>
+          <span class="step-label">Extracting action items &amp; decisions</span>
+        </div>
+        <div class="step-row" id="step-saving">
+          <span class="step-dot pending"></span>
+          <span class="step-label">Preparing review</span>
+        </div>
+      </div>
+
+      <p class="text-muted small">
+        <i class="bi bi-shield-check me-1"></i>
+        Nothing is sent until you review and approve.
+      </p>
+
+      <!-- Error state (hidden by default) -->
+      <div id="error-panel" class="alert alert-danger mt-4 d-none text-start">
+        <strong><i class="bi bi-exclamation-triangle me-1"></i>Extraction failed</strong>
+        <p class="mb-2 mt-1 small" id="error-message"></p>
+        <a href="{% url 'upload_meeting' %}" class="btn btn-sm btn-outline-danger">
+          Try again
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Animated spinner ring */
+  .processing-ring {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    margin: 0 auto;
+  }
+  .spinner-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    border-top-color: var(--bs-primary);
+    border-right-color: var(--bs-primary);
+    animation: spin 1.2s linear infinite;
+  }
+  .processing-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    color: var(--bs-primary);
+    line-height: 96px;
+    width: 100%;
+    text-align: center;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Step rows */
+  .steps-list { display: flex; flex-direction: column; gap: 12px; }
+  .step-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+    color: #888;
+    transition: color 0.3s;
+  }
+  .step-row.active { color: var(--bs-primary); font-weight: 600; }
+  .step-row.done   { color: #198754; }
+
+  .step-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .step-dot.pending { background: #dee2e6; }
+  .step-dot.active  { background: var(--bs-primary); animation: pulse 1s infinite; }
+  .step-dot.done    { background: #198754; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+</style>
+
+<script>
+  const POLL_URL = "{% url 'meeting_status_json' meeting.id %}";
+  const STEPS    = ["step-reading", "step-matching", "step-extracting", "step-saving"];
+  let stepIdx    = 0;
+  let pollCount  = 0;
+
+  function advanceStep() {
+    if (stepIdx > 0) {
+      const prev = document.getElementById(STEPS[stepIdx - 1]);
+      prev.querySelector('.step-dot').className = 'step-dot done';
+      prev.className = 'step-row done';
+    }
+    if (stepIdx < STEPS.length) {
+      const cur = document.getElementById(STEPS[stepIdx]);
+      cur.querySelector('.step-dot').className = 'step-dot active';
+      cur.className = 'step-row active';
+      stepIdx++;
+    }
+  }
+
+  // Advance steps on a timer to show progress feel
+  advanceStep();
+  const stepTimer = setInterval(() => {
+    if (stepIdx < STEPS.length) advanceStep();
+    else clearInterval(stepTimer);
+  }, 5000);
+
+  // Poll status
+  function poll() {
+    fetch(POLL_URL)
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'DRAFT') {
+          // All steps done — redirect
+          clearInterval(stepTimer);
+          STEPS.forEach(id => {
+            const el = document.getElementById(id);
+            el.querySelector('.step-dot').className = 'step-dot done';
+            el.className = 'step-row done';
+          });
+          document.getElementById('status-title').textContent = 'Done! Redirecting…';
+          document.getElementById('status-subtitle').textContent =
+            `Found items in: ${data.title}`;
+          setTimeout(() => { window.location.href = data.redirect; }, 800);
+
+        } else if (data.status === 'FAILED') {
+          clearInterval(stepTimer);
+          document.querySelector('.processing-ring').innerHTML =
+            '<i class="bi bi-x-circle display-3 text-danger"></i>';
+          document.getElementById('status-title').textContent = 'Extraction failed';
+          document.getElementById('status-subtitle').textContent = '';
+          document.getElementById('error-message').textContent = data.error || 'Unknown error';
+          document.getElementById('error-panel').classList.remove('d-none');
+
+        } else {
+          // Still processing — poll again
+          setTimeout(poll, 3000);
+        }
+      })
+      .catch(() => setTimeout(poll, 5000));  // Network hiccup — retry
+  }
+
+  // Start polling after short delay
+  setTimeout(poll, 2500);
+</script>
+{% endblock %}

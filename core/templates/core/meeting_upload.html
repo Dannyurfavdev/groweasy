@@ -1,0 +1,195 @@
+{% extends "core/base.html" %}
+{% block title %}Upload Meeting Transcript – GrowEasy{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-7 col-xl-6">
+
+      <!-- Header -->
+      <div class="mb-4">
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'meetings_list' %}">Meetings</a></li>
+            <li class="breadcrumb-item active">Upload Transcript</li>
+          </ol>
+        </nav>
+        <h2 class="fw-bold mb-1">Upload Meeting Transcript</h2>
+        <p class="text-muted mb-0">
+          AI extracts action items, decisions, and blockers automatically.
+          Paste text or upload a file — any source works.
+        </p>
+      </div>
+
+      <!-- Form -->
+      <form method="post" enctype="multipart/form-data" id="upload-form">
+        {% csrf_token %}
+
+        <!-- Project selector -->
+        <div class="card border-0 shadow-sm mb-3">
+          <div class="card-body">
+            <label class="form-label fw-semibold" for="project_id">
+              <i class="bi bi-folder2-open me-1 text-primary"></i>Project
+            </label>
+            <select name="project_id" id="project_id"
+                    class="form-select {% if errors.project %}is-invalid{% endif %}"
+                    required>
+              <option value="" disabled selected>Select a project…</option>
+              {% for p in projects %}
+                <option value="{{ p.id }}"
+                  {% if previous.project_id == p.id|stringformat:"s" %}selected{% endif %}>
+                  {{ p.name }}
+                </option>
+              {% endfor %}
+            </select>
+            {% if errors.project %}
+              <div class="invalid-feedback">{{ errors.project }}</div>
+            {% endif %}
+            <div class="form-text">
+              AI uses this project's contacts to match names to people.
+            </div>
+          </div>
+        </div>
+
+        <!-- Transcript input: tabs for paste vs upload -->
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-transparent border-bottom pt-3 pb-0 px-4">
+            <ul class="nav nav-tabs card-header-tabs" id="inputTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="paste-tab"
+                        data-bs-toggle="tab" data-bs-target="#paste-pane"
+                        type="button" role="tab">
+                  <i class="bi bi-clipboard-fill me-1"></i>Paste text
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="file-tab"
+                        data-bs-toggle="tab" data-bs-target="#file-pane"
+                        type="button" role="tab">
+                  <i class="bi bi-file-earmark-arrow-up me-1"></i>Upload file
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div class="tab-content card-body px-4">
+
+            <!-- Paste tab -->
+            <div class="tab-pane fade show active" id="paste-pane" role="tabpanel">
+              <label class="form-label fw-semibold d-none" for="transcript_text">Transcript</label>
+              <textarea name="transcript_text" id="transcript_text"
+                        class="form-control font-monospace {% if errors.transcript %}is-invalid{% endif %}"
+                        rows="14"
+                        placeholder="Paste your meeting transcript here…&#10;&#10;Works with Fireflies, Otter.ai, Zoom, Teams, Word docs copied as text — anything.">{% if previous.transcript_text %}{{ previous.transcript_text }}{% endif %}</textarea>
+              {% if errors.transcript %}
+                <div class="invalid-feedback">{{ errors.transcript }}</div>
+              {% endif %}
+              <div class="d-flex justify-content-end mt-1">
+                <small class="text-muted" id="char-count">0 characters</small>
+              </div>
+            </div>
+
+            <!-- File upload tab -->
+            <div class="tab-pane fade" id="file-pane" role="tabpanel">
+              <div class="upload-zone border border-2 border-dashed rounded-3 p-5 text-center"
+                   id="drop-zone">
+                <i class="bi bi-file-earmark-text display-4 text-muted mb-3 d-block"></i>
+                <p class="fw-semibold mb-1">Drop your transcript here</p>
+                <p class="text-muted small mb-3">or click to browse</p>
+                <input type="file" name="transcript_file" id="transcript_file"
+                       class="d-none" accept=".txt,.pdf,.docx">
+                <button type="button" class="btn btn-outline-primary btn-sm"
+                        onclick="document.getElementById('transcript_file').click()">
+                  Browse files
+                </button>
+                <div class="mt-2">
+                  <small class="text-muted">Supported: .txt, .pdf, .docx</small>
+                </div>
+                <div id="file-selected" class="mt-3 d-none">
+                  <span class="badge bg-success-subtle text-success px-3 py-2 fs-6">
+                    <i class="bi bi-check-circle me-1"></i>
+                    <span id="file-name"></span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary px-4" id="submit-btn">
+            <i class="bi bi-stars me-2"></i>Extract with AI
+          </button>
+          <a href="{% url 'meetings_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+
+        <p class="text-muted small mt-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Extraction usually takes 10–30 seconds. You can review everything before anything is sent.
+        </p>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+  .upload-zone {
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .upload-zone:hover,
+  .upload-zone.drag-over {
+    background: rgba(var(--bs-primary-rgb), 0.04);
+    border-color: var(--bs-primary) !important;
+  }
+  .font-monospace { font-size: 0.88rem; }
+</style>
+
+<script>
+  // Character counter
+  const ta = document.getElementById('transcript_text');
+  const counter = document.getElementById('char-count');
+  function updateCount() {
+    const n = ta.value.length;
+    counter.textContent = n.toLocaleString() + ' characters';
+    counter.className = n > 500 ? 'text-success small' : 'text-muted small';
+  }
+  ta.addEventListener('input', updateCount);
+  updateCount();
+
+  // File picker feedback
+  const fileInput = document.getElementById('transcript_file');
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (f) {
+      document.getElementById('file-name').textContent = f.name;
+      document.getElementById('file-selected').classList.remove('d-none');
+    }
+  });
+
+  // Drag-and-drop
+  const zone = document.getElementById('drop-zone');
+  zone.addEventListener('click', () => fileInput.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const dt = new DataTransfer();
+    dt.items.add(e.dataTransfer.files[0]);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change'));
+  });
+
+  // Loading state on submit
+  document.getElementById('upload-form').addEventListener('submit', () => {
+    const btn = document.getElementById('submit-btn');
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading…';
+    btn.disabled = true;
+  });
+</script>
+{% endblock %}

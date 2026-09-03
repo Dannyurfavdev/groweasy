@@ -7,6 +7,10 @@ from guardian.shortcuts import get_objects_for_user
 from django.core.mail import BadHeaderError, send_mail
 import json
 from django.conf import settings
+from django.views.decorators.http import require_POST
+from .procore_export import build_project_export
+from .procore_client import send_project_export
+
 
 from .ai_processor import (
     analyze_sentiment, 
@@ -16,6 +20,11 @@ from .ai_processor import (
 from .tasks import process_message_async
 from django.utils import timezone
 from datetime import timedelta
+
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -1382,6 +1391,562 @@ def risk_run_all(request):
         'success': True,
         'message': f'Risk recalculated for {projects.count()} projects'
     })
+
+'''
+@login_required
+@require_POST
+def export_to_procore(request, project_id):
+    """
+    Called by the "Export to Procore" button.
+    Expects a POST with JSON body:
+    {
+        "access_token":       "...",   # customer's Procore OAuth token
+        "company_id":         "...",   # their Procore company ID
+        "procore_project_id": "...",   # their Procore project ID
+        "date_from":          "2026-01-01",  # optional
+        "date_to":            "2026-01-31"   # optional
+    }
+    """
+    from .models import Project
+
+    # ── Verify the project belongs to this user ───────────────
+    try:
+        project = Project.objects.get(id=project_id, owner=request.user)
+    except Project.DoesNotExist:
+        return JsonResponse({"error": "Project not found."}, status=404)
+
+    # ── Parse request body ────────────────────────────────────
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON in request body."}, status=400)
+
+    access_token       = body.get("access_token", "").strip()
+    company_id         = body.get("company_id", "").strip()
+    procore_project_id = body.get("procore_project_id", "").strip()
+    date_from          = body.get("date_from") or None
+    date_to            = body.get("date_to") or None
+
+    # ── Validate required credentials ─────────────────────────
+    missing = [f for f, v in {
+        "access_token":       access_token,
+        "company_id":         company_id,
+        "procore_project_id": procore_project_id,
+    }.items() if not v]
+
+    if missing:
+        return JsonResponse({
+            "error": f"Missing required fields: {', '.join(missing)}"
+        }, status=400)
+
+    # ── Build the export payload (pure data, no API calls) ────
+    try:
+        export_data = build_project_export(
+            project,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except Exception as e:
+        return JsonResponse({
+            "error": f"Failed to build export: {str(e)}"
+        }, status=500)
+
+    # ── Send to Procore ───────────────────────────────────────
+    try:
+        result = send_project_export(
+            export_data,
+            access_token=access_token,
+            company_id=company_id,
+            procore_project_id=procore_project_id,
+        )
+    except Exception as e:
+        return JsonResponse({
+            "error": f"Procore API error: {str(e)}"
+        }, status=502)
+
+    # ── Return result summary to the UI ───────────────────────
+    return JsonResponse({
+        "success":      True,
+        "project_name": export_data["project_name"],
+        "summary":      export_data["summary"],
+        "result":       result,
+    })
+'''
+
+@login_required
+@require_POST
+def export_to_procore(request, project_id):
+    from .models import Project
+
+    try:
+        project = Project.objects.get(id=project_id, owner=request.user)
+    except Project.DoesNotExist:
+        return JsonResponse({"error": "Project not found."}, status=404)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON in request body."}, status=400)
+
+    access_token       = body.get("access_token", "").strip()
+    company_id         = body.get("company_id", "").strip()
+    procore_project_id = body.get("procore_project_id", "").strip()
+    date_from          = body.get("date_from") or None
+    date_to            = body.get("date_to") or None
+    is_dry_run         = body.get("dry_run", False)  # ← NEW
+
+    # For real exports, all three credentials are required.
+    # For dry runs we allow placeholder values so the form
+    # doesn't block the preview when credentials aren't filled in.
+    if not is_dry_run:  # ← NEW — wrap the validation
+        missing = [f for f, v in {
+            "access_token":       access_token,
+            "company_id":         company_id,
+            "procore_project_id": procore_project_id,
+        }.items() if not v or v == 'dry-run']
+
+        if missing:
+            return JsonResponse({
+                "error": f"Missing required fields: {', '.join(missing)}"
+            }, status=400)
+
+    # Build the export payload — same for both dry run and real export.
+    # This queries the DB and applies date filters.
+    try:
+        export_data = build_project_export(
+            project,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except Exception as e:
+        return JsonResponse({
+            "error": f"Failed to build export: {str(e)}"
+        }, status=500)
+
+    # ── NEW: dry run stops here, returns counts only ──────────
+    if is_dry_run:
+        return JsonResponse({
+            "success":      True,
+            "project_name": export_data["project_name"],
+            "summary":      export_data["summary"],
+        })
+
+    # ── Everything below is unchanged ────────────────────────
+    try:
+        result = send_project_export(
+            export_data,
+            access_token=access_token,
+            company_id=company_id,
+            procore_project_id=procore_project_id,
+        )
+    except Exception as e:
+        return JsonResponse({
+            "error": f"Procore API error: {str(e)}"
+        }, status=502)
+
+    return JsonResponse({
+        "success":      True,
+        "project_name": export_data["project_name"],
+        "summary":      export_data["summary"],
+        "result":       result,
+    })
+
+
+# ─────────────────────────────────────────────
+# UPLOAD MEETING CODE
+# ─────────────────────────────────────────────
+
+@login_required
+def upload_meeting(request):
+    """
+    GET  → render upload form (project dropdown + file/paste input)
+    POST → save MeetingRecord, fire Celery task, redirect to status page
+    """
+    from core.models import Project, MeetingRecord
+    from core.tasks import process_meeting_transcript
+    from core.meeting_extractor import extract_text_from_file
+
+    projects = Project.objects.filter(
+        owner=request.user    # only projects user belongs to
+    ).distinct()
+
+    if request.method == "GET":
+        return render(request, "core/meeting_upload.html", {"projects": projects})
+
+    # ── POST ─────────────────────────────────────
+    project_id     = request.POST.get("project_id")
+    transcript_raw = request.POST.get("transcript_text", "").strip()
+    uploaded_file  = request.FILES.get("transcript_file")
+
+    # Validation
+    errors = {}
+    if not project_id:
+        errors["project"] = "Please select a project."
+    if not transcript_raw and not uploaded_file:
+        errors["transcript"] = "Paste a transcript or upload a file."
+
+    if errors:
+        return render(request, "core/meeting_upload.html", {
+            "projects": projects,
+            "errors": errors,
+            "previous": request.POST,
+        })
+
+    project = get_object_or_404(Project, id=project_id)
+
+    # Parse file if uploaded
+    if uploaded_file:
+        try:
+            transcript_text = extract_text_from_file(uploaded_file)
+        except Exception as exc:
+            return render(request, "core/meeting_upload.html", {
+                "projects": projects,
+                "errors": {"transcript": f"Could not read file: {exc}"},
+                "previous": request.POST,
+            })
+    else:
+        transcript_text = transcript_raw
+
+    if len(transcript_text.strip()) < 50:
+        return render(request, "core/meeting_upload.html", {
+            "projects": projects,
+            "errors": {"transcript": "Transcript is too short to extract anything useful."},
+            "previous": request.POST,
+        })
+
+    # Create record + fire task
+    meeting = MeetingRecord.objects.create(
+        project=project,
+        transcript_text=transcript_text,
+        uploaded_by=request.user,
+        status=MeetingRecord.Status.PENDING,
+    )
+
+    process_meeting_transcript.delay(meeting.id)
+
+    return redirect("meeting_status", pk=meeting.id)
+
+
+# ─────────────────────────────────────────────
+# STATUS (polling page + JSON endpoint)
+# ─────────────────────────────────────────────
+
+@login_required
+def meeting_status(request, pk):
+    """
+    Renders a waiting/status page. JS polls the JSON endpoint every 3s.
+    Once DRAFT, JS redirects to review page.
+    """
+    from core.models import MeetingRecord
+    meeting = get_object_or_404(MeetingRecord, pk=pk, project__owner=request.user)
+    return render(request, "core/meeting_status.html", {"meeting": meeting})
+
+
+@login_required
+def meeting_status_json(request, pk):
+    """
+    Polled by JS every 3s. Returns current status + redirect URL when ready.
+    """
+    from core.models import MeetingRecord
+    meeting = get_object_or_404(MeetingRecord, pk=pk)
+
+    data = {
+        "status": meeting.status,
+        "title":  meeting.title or "Untitled Meeting",
+        "error":  meeting.error_message,
+    }
+
+    if meeting.status == MeetingRecord.Status.DRAFT:
+        data["redirect"] = f"/meetings/{pk}/review/"
+
+    return JsonResponse(data)
+
+
+# ─────────────────────────────────────────────
+# REVIEW + APPROVE
+# ─────────────────────────────────────────────
+
+@login_required
+def meeting_review(request, pk):
+    """
+    Shows extracted action items, decisions, blockers for PM review.
+    Inline editing is handled via individual PATCH endpoints below.
+    """
+    from core.models import MeetingRecord
+    meeting = get_object_or_404(
+        MeetingRecord.objects.prefetch_related(
+            "action_items__owner",
+            "decisions__made_by",
+            "blockers",
+        ),
+        pk=pk,
+        project__owner=request.user,
+    )
+    return render(request, "core/meeting_review.html", {"meeting": meeting})
+
+
+@login_required
+@require_POST
+def meeting_approve(request, pk):
+    from core.models import MeetingRecord
+    from core.tasks import notify_action_item_owners
+
+    meeting = get_object_or_404(MeetingRecord, pk=pk)
+
+    if meeting.status != MeetingRecord.Status.DRAFT:
+        return JsonResponse({"error": "Only DRAFT meetings can be approved."}, status=400)
+
+    all_unassigned = meeting.action_items.filter(owner__isnull=True)
+
+    # Named but unresolved — these BLOCK approval (person exists but not in contacts)
+    named_unresolved = [
+        i.owner_raw_name.strip()
+        for i in all_unassigned
+        if i.owner_raw_name and i.owner_raw_name.strip()
+    ]
+
+    # Truly ownerless — warn but allow approval
+    ownerless_count = all_unassigned.filter(owner_raw_name="").count()
+
+    if named_unresolved:
+        return JsonResponse({
+            "error": "unassigned_owners",
+            "message": "Some action items have named owners who are not project contacts.",
+            "unassigned": named_unresolved,
+            "ownerless_count": ownerless_count,
+        }, status=400)
+
+    # Approve — ownerless tasks are allowed through with a warning
+    meeting.status = MeetingRecord.Status.APPROVED
+    meeting.save(update_fields=["status"])
+    notify_action_item_owners.delay(meeting.id)
+
+    return JsonResponse({
+        "status": "approved",
+        "notified": meeting.action_items.filter(owner__isnull=False).count(),
+        "ownerless_count": ownerless_count,
+    })
+
+'''
+@login_required
+@require_POST
+def meeting_approve(request, pk):
+    """
+    PM approves the full meeting. Fires WhatsApp notifications.
+    """
+    from core.models import MeetingRecord
+    from core.tasks import notify_action_item_owners
+
+    meeting = get_object_or_404(MeetingRecord, pk=pk)
+
+    if meeting.status != MeetingRecord.Status.DRAFT:
+        return JsonResponse({"error": "Only DRAFT meetings can be approved."}, status=400)
+
+    # ── Block if any action items have no resolved contact ──
+    unassigned = meeting.action_items.filter(owner__isnull=True)
+    if unassigned.exists():
+        unassigned_list = list(unassigned.values_list("owner_raw_name", flat=True))
+        unassigned_list = [
+            item.owner_raw_name.strip() if item.owner_raw_name else ""
+            for item in unassigned
+            ]
+        return JsonResponse({
+            "error": "unassigned_owners",
+            "message": "Some action items have unresolved owners. Add them as project contacts first.",
+            "unassigned": unassigned_list,
+        }, status=400)
+
+    meeting.status = MeetingRecord.Status.APPROVED
+    meeting.save(update_fields=["status"])
+
+    # Fire WhatsApp notifications async
+    notify_action_item_owners.delay(meeting.id)
+
+    return JsonResponse({
+        "status": "approved",
+        "notified": meeting.action_items.filter(owner__isnull=False).count(),
+    })
+'''
+
+@login_required
+@require_POST
+def action_item_update(request, pk):
+    """
+    Inline edit for a single action item from the review screen.
+    Accepts JSON body: { task_description, owner_raw_name, due_date, status }
+    """
+    from core.models import ActionItem, ProjectContact
+
+    item = get_object_or_404(ActionItem, pk=pk)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    if "task_description" in data:
+        item.task_description = data["task_description"]
+
+    if "due_date" in data:
+        from datetime import datetime
+        try:
+            item.due_date = datetime.strptime(data["due_date"], "%Y-%m-%d").date() if data["due_date"] else None
+        except ValueError:
+            return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
+
+    if "status" in data:
+        item.status = data["status"]
+
+    if "owner_raw_name" in data:
+        item.owner_raw_name = data["owner_raw_name"]
+        # Try to re-resolve contact
+        from core.meeting_extractor import resolve_name_to_contact
+        contacts = ProjectContact.objects.filter(project=item.meeting.project)
+        item.owner = resolve_name_to_contact(data["owner_raw_name"], contacts)
+
+    item.save()
+    return JsonResponse({"saved": True, "owner_resolved": item.owner.name if item.owner else None})
+
+
+@login_required
+@require_POST
+def action_item_delete(request, pk):
+    from core.models import ActionItem
+    item = get_object_or_404(ActionItem, pk=pk)
+    item.delete()
+    return JsonResponse({"deleted": True})
+
+
+# ─────────────────────────────────────────────
+# MEETINGS LIST (per project)
+# ─────────────────────────────────────────────
+
+@login_required
+def meetings_list(request):
+    """
+    Lists all meetings across user's projects. Optional ?project=id filter.
+    """
+    from core.models import MeetingRecord, Project
+
+    projects = Project.objects.filter(
+        owner=request.user
+    ).distinct()
+
+    project_id = request.GET.get("project")
+    meetings = MeetingRecord.objects.filter(
+        project__owner=request.user
+    ).select_related("project", "uploaded_by")
+
+    if project_id:
+        meetings = meetings.filter(project_id=project_id)
+
+    return render(request, "core/meetings_list.html", {
+        "meetings":   meetings,
+        "projects":   projects,
+        "project_id": project_id,
+    })
+
+"""
+Export Meeting To Procore
+"""
+
+@login_required
+@require_POST
+def meeting_procore_dry_run(request, pk):
+    """
+    Returns a preview of what would be pushed to Procore.
+    No API calls to Procore — just structures the data.
+    Also validates that credentials are non-empty.
+    """
+    from core.models import MeetingRecord
+    from core.procore_pusher import dry_run_summary
+
+    meeting = get_object_or_404(
+        MeetingRecord,
+        pk=pk,
+        project__owner=request.user,
+    )
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    # Validate credentials are present (don't call API yet)
+    access_token       = body.get("access_token", "").strip()
+    company_id         = body.get("company_id", "").strip()
+    procore_project_id = body.get("procore_project_id", "").strip()
+
+    missing = []
+    if not access_token:       missing.append("Access token")
+    if not company_id:         missing.append("Company ID")
+    if not procore_project_id: missing.append("Procore project ID")
+
+    if missing:
+        return JsonResponse({
+            "error": f"Missing required fields: {', '.join(missing)}"
+        }, status=400)
+
+    summary = dry_run_summary(meeting)
+    return JsonResponse({"success": True, "summary": summary})
+
+
+@login_required
+@require_POST
+def meeting_procore_push(request, pk):
+    """
+    Performs the real push to Procore.
+    Accepts assignee_overrides: {action_item_id: "name"} for
+    PM-typed names on unassigned items.
+    """
+    from core.models import MeetingRecord
+    from core.procore_pusher import push_meeting_to_procore
+
+    meeting = get_object_or_404(
+        MeetingRecord,
+        pk=pk,
+        project__owner=request.user,
+    )
+
+    if meeting.status not in (
+        MeetingRecord.Status.APPROVED,
+        MeetingRecord.Status.PUSHED,   # Allow re-push
+    ):
+        return JsonResponse({
+            "error": "Meeting must be approved before pushing to Procore."
+        }, status=400)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    access_token        = body.get("access_token", "").strip()
+    company_id          = body.get("company_id", "").strip()
+    procore_project_id  = body.get("procore_project_id", "").strip()
+    assignee_overrides  = body.get("assignee_overrides", {})  # {str(id): "name"}
+
+    missing = []
+    if not access_token:       missing.append("Access token")
+    if not company_id:         missing.append("Company ID")
+    if not procore_project_id: missing.append("Procore project ID")
+
+    if missing:
+        return JsonResponse({
+            "error": f"Missing required fields: {', '.join(missing)}"
+        }, status=400)
+
+    result = push_meeting_to_procore(
+        meeting=meeting,
+        access_token=access_token,
+        company_id=company_id,
+        procore_project_id=procore_project_id,
+        assignee_overrides=assignee_overrides,
+    )
+
+    if not result["success"]:
+        return JsonResponse({"error": result.get("error", "Push failed.")}, status=400)
+
+    return JsonResponse(result)
 
 
 

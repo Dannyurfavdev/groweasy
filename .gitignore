@@ -15,7 +15,6 @@ env/
 
 # Environment variables / secrets
 .env
-.env.example
 .env.*
 *.env
 secrets.py
@@ -31,6 +30,7 @@ db.sqlite3
 # Celery
 celerybeat-schedule
 celerybeat.pid
+celerybeat-schedule.db
 
 # ngrok
 ngrok
@@ -44,3 +44,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Redis
+
+dump.rdb
+
+# Google service account credentials
+credentials.json

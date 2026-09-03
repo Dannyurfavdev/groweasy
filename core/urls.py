@@ -43,5 +43,24 @@ urlpatterns = [
     path('risk/<int:project_id>/', views.risk_detail, name='risk_detail'),
     path('risk/run-all/', views.risk_run_all, name='risk_run_all'),
     path('risk/<int:project_id>/refresh/', views.risk_refresh_api, name='risk_refresh_api'),
+
+    # Export to Project Daily Logs, observation and Alerts to Procore
+    path("projects/<int:project_id>/export-to-procore/", views.export_to_procore, name="export_to_procore"),
+
+    # --- Meetings ---
+    path("meetings/", views.meetings_list, name="meetings_list"),
+    path("meetings/upload/", views.upload_meeting, name="upload_meeting"),
+    path("meetings/<int:pk>/status/", views.meeting_status, name="meeting_status"),
+    path("meetings/<int:pk>/status.json", views.meeting_status_json, name="meeting_status_json"),
+    path("meetings/<int:pk>/review/", views.meeting_review, name="meeting_review"),
+    path("meetings/<int:pk>/approve/", views.meeting_approve, name="meeting_approve"),
+    path("action-items/<int:pk>/update/", views.action_item_update, name="action_item_update"),
+    path("action-items/<int:pk>/delete/", views.action_item_delete, name="action_item_delete"),
+
+    # --- Export Meeting Items to Procore ---
+    path("meetings/<int:pk>/procore-dry-run/", views.meeting_procore_dry_run, name="meeting_procore_dry_run"),
+    path("meetings/<int:pk>/procore-push/", views.meeting_procore_push, name="meeting_procore_push"),
+
    
 ]
+
