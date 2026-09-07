@@ -1,0 +1,304 @@
+{% extends "core/base.html" %}
+{% block title %}Procore Setup – {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+
+      <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+          <li class="breadcrumb-item"><a href="{% url 'manage_projects' %}">Projects</a></li>
+          <li class="breadcrumb-item active">Procore Setup</li>
+        </ol>
+      </nav>
+
+      <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+        <div>
+          <h2 class="fw-bold mb-1">Procore Integration</h2>
+          <p class="text-muted mb-0">
+            <i class="bi bi-folder2-open me-1"></i>{{ project.name }}
+          </p>
+        </div>
+        {% if credential %}
+          <span class="badge ms-auto
+            {% if credential.is_connected %}bg-success-subtle text-success border border-success-subtle
+            {% else %}bg-warning-subtle text-warning border border-warning-subtle{% endif %}
+            px-3 py-2">
+            {% if credential.is_connected %}
+              <i class="bi bi-check2-circle me-1"></i>Connected
+              ({{ credential.environment }})
+            {% else %}
+              <i class="bi bi-exclamation-circle me-1"></i>Not connected
+            {% endif %}
+          </span>
+        {% endif %}
+      </div>
+
+      <!-- OAuth result banners -->
+      {% if connected %}
+        <div class="alert alert-success mb-3">
+          <i class="bi bi-check2-circle me-2"></i>
+          <strong>Procore connected successfully!</strong>
+          Click "Test connection" to verify everything is working.
+        </div>
+      {% endif %}
+
+      {% if oauth_error %}
+        <div class="alert alert-danger mb-3">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          <strong>Connection failed.</strong>
+          {% if oauth_error == 'access_denied' %}
+            You denied access to Procore. Click Connect again to authorize.
+          {% elif oauth_error == 'token_exchange_failed' %}
+            Could not exchange the authorization code. Please try again.
+          {% else %}
+            {{ oauth_error }}
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <div id="setup-alert" class="d-none mb-3"></div>
+
+      <!-- Step 1: Credentials -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-transparent py-3">
+          <h5 class="fw-semibold mb-0">
+            <span class="badge bg-primary me-2">1</span>Enter credentials
+          </h5>
+        </div>
+        <div class="card-body">
+
+          <div class="mb-4">
+            <label class="form-label small fw-medium">Environment</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio"
+                       name="environment" id="env-sandbox" value="sandbox"
+                       {% if not credential or credential.environment == 'sandbox' %}checked{% endif %}>
+                <label class="form-check-label small" for="env-sandbox">
+                  <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                    <i class="bi bi-cone-striped me-1"></i>Sandbox
+                  </span>
+                  <span class="text-muted ms-1">testing</span>
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio"
+                       name="environment" id="env-production" value="production"
+                       {% if credential and credential.environment == 'production' %}checked{% endif %}>
+                <label class="form-check-label small" for="env-production">
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">
+                    <i class="bi bi-check2-circle me-1"></i>Production
+                  </span>
+                  <span class="text-muted ms-1">live</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-medium">Client ID</label>
+            <input type="text" class="form-control form-control-sm" id="client-id"
+                   placeholder="From Procore Developer Tools"
+                   value="{% if credential %}{{ credential.client_id }}{% endif %}">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-medium">Client Secret</label>
+            <div class="input-group input-group-sm">
+              <input type="password" class="form-control" id="client-secret"
+                     placeholder="••••••••••••••••"
+                     value="{% if credential %}{{ credential.client_secret }}{% endif %}">
+              <button class="btn btn-outline-secondary" type="button"
+                      onclick="toggleSecret(this)">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col">
+              <label class="form-label small fw-medium">Company ID</label>
+              <input type="text" class="form-control form-control-sm" id="company-id"
+                     placeholder="e.g. 4289633"
+                     value="{% if credential %}{{ credential.company_id }}{% endif %}">
+            </div>
+            <div class="col">
+              <label class="form-label small fw-medium">Procore Project ID</label>
+              <input type="text" class="form-control form-control-sm" id="procore-project-id"
+                     placeholder="e.g. 365573"
+                     value="{% if credential %}{{ credential.procore_project_id }}{% endif %}">
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-sm px-4" onclick="saveCredentials()">
+            <i class="bi bi-save me-2"></i>Save credentials
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Connect -->
+      <div class="card border-0 shadow-sm mb-4
+        {% if not credential %}opacity-50{% endif %}">
+        <div class="card-header bg-transparent py-3">
+          <h5 class="fw-semibold mb-0">
+            <span class="badge bg-primary me-2">2</span>Connect to Procore
+          </h5>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">
+            Click the button below to log in to Procore and authorize GrowEasy.
+            You'll be redirected to Procore and back automatically.
+          </p>
+
+          {% if credential %}
+            <div class="d-flex gap-2 flex-wrap">
+              <a href="{% url 'procore_oauth_redirect' project.id %}"
+                 class="btn btn-success btn-sm px-4">
+                <i class="bi bi-box-arrow-up-right me-2"></i>
+                {% if credential.is_connected %}Reconnect to Procore{% else %}Connect to Procore{% endif %}
+              </a>
+              {% if credential.is_connected %}
+                <button class="btn btn-outline-secondary btn-sm"
+                        onclick="testConnection()">
+                  <i class="bi bi-wifi me-2"></i>Test connection
+                </button>
+              {% endif %}
+            </div>
+          {% else %}
+            <p class="small text-muted mb-0">
+              Save your credentials first to enable this step.
+            </p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Where to find credentials -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">
+            <i class="bi bi-question-circle text-muted me-1"></i>
+            Where to find these in Procore
+          </h6>
+          <ol class="small text-muted mb-0 ps-3">
+            <li class="mb-2">
+              Go to
+              <a href="https://developers.procore.com" target="_blank">developers.procore.com</a>
+              → My Apps → your app
+            </li>
+            <li class="mb-2">
+              Under <strong>Sandbox OAuth Credentials</strong>, copy the
+              <strong>Client ID</strong> and <strong>Client Secret</strong>
+            </li>
+            <li class="mb-2">
+              <strong>Company ID</strong> — in the URL when on company home:
+              <code>/[company_id]/company/home</code>
+            </li>
+            <li class="mb-2">
+              <strong>Project ID</strong> — in the URL when a project is open:
+              <code>/[company_id]/project/[project_id]/</code>
+            </li>
+            <li>
+              Make sure your Redirect URI in Procore is set to:<br>
+              <code>http://localhost:8000/procore/callback/</code>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  const PROJECT_ID = {{ project.id }};
+  const SETUP_URL  = `/projects/${PROJECT_ID}/procore-setup/`;
+  const TEST_URL   = `/projects/${PROJECT_ID}/procore-test/`;
+  const CSRF       = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+  function getFormValues() {
+    return {
+      client_id:          document.getElementById('client-id').value.trim(),
+      client_secret:      document.getElementById('client-secret').value.trim(),
+      company_id:         document.getElementById('company-id').value.trim(),
+      procore_project_id: document.getElementById('procore-project-id').value.trim(),
+      environment:        document.querySelector('input[name="environment"]:checked').value,
+    };
+  }
+
+  function showAlert(type, message) {
+    const el = document.getElementById('setup-alert');
+    el.className = `alert alert-${type} mb-3`;
+    el.textContent = message;
+    el.classList.remove('d-none');
+    if (type === 'success') setTimeout(() => el.classList.add('d-none'), 5000);
+  }
+
+  function toggleSecret(btn) {
+    const input = document.getElementById('client-secret');
+    const icon  = btn.querySelector('i');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.className = 'bi bi-eye-slash';
+    } else {
+      input.type = 'password';
+      icon.className = 'bi bi-eye';
+    }
+  }
+
+  async function saveCredentials() {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving…';
+
+    try {
+      const r    = await fetch(SETUP_URL, {
+        method:  'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(getFormValues()),
+      });
+      const data = await r.json();
+
+      if (data.success) {
+        showAlert('success', `✓ ${data.message}`);
+        // Reload so Connect button becomes active
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showAlert('danger', data.error || 'Save failed.');
+      }
+    } catch {
+      showAlert('danger', 'Network error — please try again.');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-save me-2"></i>Save credentials';
+  }
+
+  async function testConnection() {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing…';
+
+    try {
+      const r    = await fetch(TEST_URL, {
+        method:  'POST',
+        headers: { 'X-CSRFToken': CSRF },
+      });
+      const data = await r.json();
+
+      if (data.success) {
+        showAlert('success', `✓ ${data.message}`);
+      } else {
+        showAlert('danger', `✗ ${data.error || data.message}`);
+      }
+    } catch {
+      showAlert('danger', 'Network error — please try again.');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-wifi me-2"></i>Test connection';
+  }
+</script>
+{% endblock %}

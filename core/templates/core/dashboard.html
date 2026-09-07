@@ -270,6 +270,12 @@
                     <a href="{% url 'risk_overview' %}" class="btn btn-outline-secondary me-2">
                         <i class="bi bi-activity"></i> Risk Overview
                     </a>
+                    <!-- Choose Mode For Procore -->
+                    {% if request.user.is_staff %}
+                        <a href="{% url 'dev_tools' %}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-tools me-1"></i>Dev Tools
+                        </a>
+                    {% endif %}
                     
                     <!-- Add this: -->
                     
@@ -775,276 +781,296 @@
         </div>
         {% endif %}
     </div>
-    <!-- ═══════════════════════════════════════════════
-     PROCORE EXPORT MODAL
-    ════════════════════════════════════════════════ -->
-    <div class="modal fade" id="procoreModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-sm">
-    
-            <!-- Header -->
-            <div class="modal-header border-0 pb-0">
-            <div>
-                <h5 class="modal-title fw-semibold mb-0">Export to Procore</h5>
-                <p class="text-muted small mb-0 mt-1">
-                Sends messages, delay alerts, and photos to your Procore project.
-                </p>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-    
-            <!-- Body -->
-            <div class="modal-body pt-3">
-    
-            <!-- Credentials form (shown first) -->
-            <div id="procore-form">
-                <div class="mb-3">
-                <label class="form-label small fw-medium">Procore access token</label>
-                <input type="password" class="form-control form-control-sm"
-                        id="pc-token" placeholder="Paste your OAuth access token">
-                <div class="form-text">
-                    Found in Procore → Developer Tools → OAuth credentials.
-                </div>
-                </div>
-                <div class="mb-3">
-                <label class="form-label small fw-medium">Company ID</label>
-                <input type="text" class="form-control form-control-sm"
-                        id="pc-company" placeholder="e.g. 12345">
-                </div>
-                <div class="mb-3">
-                <label class="form-label small fw-medium">Procore project ID</label>
-                <input type="text" class="form-control form-control-sm"
-                        id="pc-project" placeholder="e.g. 67890">
-                </div>
-    
-                <!-- Optional date range -->
-                <div class="row g-2 mb-3">
-                <div class="col">
-                    <label class="form-label small fw-medium">From date <span class="text-muted">(optional)</span></label>
-                    <input type="date" class="form-control form-control-sm" id="pc-from">
-                </div>
-                <div class="col">
-                    <label class="form-label small fw-medium">To date <span class="text-muted">(optional)</span></label>
-                    <input type="date" class="form-control form-control-sm" id="pc-to">
-                </div>
-                </div>
-    
-                <!-- Dry run toggle -->
-                <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="pc-dryrun" checked>
-                <label class="form-check-label small" for="pc-dryrun">
-                    Dry run — preview without sending to Procore
-                </label>
-                </div>
-    
-                <!-- Error message slot -->
-                <div id="procore-error" class="alert alert-danger small py-2 d-none"></div>
-            </div>
-    
-            <!-- Progress (shown while sending) -->
-            <div id="procore-progress" class="d-none text-center py-4">
-                <div class="spinner-border spinner-border-sm text-primary mb-3" role="status"></div>
-                <p class="small text-muted mb-0" id="procore-progress-msg">Building export...</p>
-            </div>
-    
-            <!-- Result (shown after send) -->
-            <div id="procore-result" class="d-none">
-                <div class="alert alert-success small py-2 mb-3" id="procore-result-msg"></div>
-                <div class="row g-2 text-center" id="procore-result-cards"></div>
-            </div>
-    
-            </div>
-    
-            <!-- Footer -->
-            <div class="modal-footer border-0 pt-0" id="procore-footer">
-            <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button class="btn btn-sm btn-primary" id="procore-send-btn"
-                    onclick="runProcoreExport()">
-                <i class="bi bi-upload me-1"></i> Preview export
-            </button>
-            </div>
-    
-        </div>
-        </div>
-    </div>
-    
-    <!-- ═══════════════════════════════════════════════
-        PROCORE EXPORT SCRIPT
-    ════════════════════════════════════════════════ -->
-    <script>
-    const PROCORE_EXPORT_URL = "{% url 'export_to_procore' project.id %}";
-    
-    // Update button label based on dry run toggle
-    document.getElementById('pc-dryrun').addEventListener('change', function () {
-        document.getElementById('procore-send-btn').innerHTML = this.checked
-        ? '<i class="bi bi-eye me-1"></i> Preview export'
-        : '<i class="bi bi-upload me-1"></i> Send to Procore';
-    });
-    
-    async function runProcoreExport() {
-        const token     = document.getElementById('pc-token').value.trim();
-        const companyId = document.getElementById('pc-company').value.trim();
-        const projectId = document.getElementById('pc-project').value.trim();
-        const dateFrom  = document.getElementById('pc-from').value || null;
-        const dateTo    = document.getElementById('pc-to').value || null;
-        const isDryRun  = document.getElementById('pc-dryrun').checked;
-    
-        // ── Client-side validation ──────────────────────────────
-        const errorEl = document.getElementById('procore-error');
-        errorEl.classList.add('d-none');
-    
-        if (!token || !companyId || !projectId) {
-        errorEl.textContent = 'Please fill in all three Procore credential fields.';
-        errorEl.classList.remove('d-none');
-        return;
-        }
-    
-        // ── Dry run: just show what would be sent ───────────────
-        if (isDryRun) {
-        showDryRunPreview();
-        return;
-        }
-    
-        // ── Real export: show progress, call the view ───────────
-        showProgress('Building export from GrowEasy data...');
-    
-        try {
-        const response = await fetch(PROCORE_EXPORT_URL, {
-            method:  'POST',
-            headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken':  getCsrfToken(),
-            },
-            body: JSON.stringify({
-            access_token:       token,
-            company_id:         companyId,
-            procore_project_id: projectId,
-            date_from:          dateFrom,
-            date_to:            dateTo,
-            }),
-        });
-    
-        const data = await response.json();
-    
-        if (!response.ok || !data.success) {
-            showError(data.error || 'Export failed. Check your credentials and try again.');
-            return;
-        }
-    
-        showResult(data);
-    
-        } catch (err) {
-        showError('Network error — check your connection and try again.');
-        }
-    }
-    
-    // ── Dry run: fetch export summary without sending ─────────
-    async function showDryRunPreview() {
-    const token     = document.getElementById('pc-token').value.trim();
-    const companyId = document.getElementById('pc-company').value.trim();
-    const projectId = document.getElementById('pc-project').value.trim();
-    const dateFrom  = document.getElementById('pc-from').value || null;
-    const dateTo    = document.getElementById('pc-to').value || null;
+    <!-- ═══════════════════════════════════════════════════════════════
+        Procore Modal
+     ═══════════════════════════════════════════════════════════════-->
+     
+     <div class="modal fade" id="procoreModal" tabindex="-1">
+       <div class="modal-dialog modal-dialog-centered">
+         <div class="modal-content border-0 shadow-sm">
+     
+           <div class="modal-header border-0 pb-0">
+             <div>
+               <h5 class="modal-title fw-semibold mb-0">Export to Procore</h5>
+               <p class="text-muted small mb-0 mt-1">
+                 Sends WhatsApp messages, delay alerts, and photos to Procore.
+               </p>
+             </div>
+             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+           </div>
+     
+           <div class="modal-body pt-3">
+     
+             <!-- STEP 1: Options -->
+             <div id="exp-step-form">
+     
+               <!-- Active mode badge -->
+               <div class="mb-3" id="exp-mode-badge-wrap">
+                 <span class="badge bg-secondary" id="exp-mode-badge">Loading…</span>
+               </div>
+     
+               <!-- Date range (optional) -->
+               <div class="row g-2 mb-3">
+                 <div class="col">
+                   <label class="form-label small fw-medium">
+                     From date <span class="text-muted">(optional)</span>
+                   </label>
+                   <input type="date" class="form-control form-control-sm" id="exp-from">
+                 </div>
+                 <div class="col">
+                   <label class="form-label small fw-medium">
+                     To date <span class="text-muted">(optional)</span>
+                   </label>
+                   <input type="date" class="form-control form-control-sm" id="exp-to">
+                 </div>
+               </div>
+     
+               <!-- Dry run toggle -->
+               <div class="form-check form-switch mb-3">
+                 <input class="form-check-input" type="checkbox" id="exp-dryrun" checked>
+                 <label class="form-check-label small" for="exp-dryrun">
+                   Dry run — preview counts without sending
+                 </label>
+               </div>
+     
+               <!-- Not connected warning (hidden by default) -->
+               <div id="exp-not-connected" class="d-none">
+                 <div class="text-center py-3">
+                   <i class="bi bi-plug display-5 text-muted mb-2 d-block opacity-50"></i>
+                   <p class="text-muted small mb-3" id="exp-not-connected-msg"></p>
+                   <div class="d-flex gap-2 justify-content-center flex-wrap">
+                     <a href="/dev-tools/" class="btn btn-primary btn-sm">
+                       <i class="bi bi-tools me-1"></i>Switch to Mock mode
+                     </a>
+                     <a href="/projects/{{ project.id }}/procore-setup/"
+                        class="btn btn-outline-secondary btn-sm">
+                       <i class="bi bi-gear me-1"></i>Set up Procore
+                     </a>
+                   </div>
+                 </div>
+               </div>
+     
+               <div id="exp-error" class="alert alert-danger small py-2 d-none"></div>
+             </div>
+     
+             <!-- STEP 2: Progress -->
+             <div id="exp-step-progress" class="d-none text-center py-4">
+               <div class="spinner-border spinner-border-sm text-primary mb-3" role="status"></div>
+               <p class="small text-muted mb-0" id="exp-progress-msg">Building export…</p>
+             </div>
+     
+             <!-- STEP 3: Result -->
+             <div id="exp-step-result" class="d-none">
+               <div class="alert small py-2 mb-3" id="exp-result-msg"></div>
+               <div class="row g-2 text-center" id="exp-result-cards"></div>
+             </div>
+     
+           </div>
+     
+           <div class="modal-footer border-0 pt-0" id="exp-footer">
+             <button class="btn btn-sm btn-outline-secondary"
+                     data-bs-dismiss="modal">Cancel</button>
+             <button class="btn btn-sm btn-primary" id="exp-send-btn"
+                     onclick="runProcoreExport()">
+               <i class="bi bi-eye me-1"></i>Preview export
+             </button>
+           </div>
+     
+         </div>
+       </div>
+     </div>
+     
+     <script>
+     const PROCORE_EXPORT_URL = "{% url 'export_to_procore' project.id %}";
+     
+     // Load mode info when modal opens
+     document.getElementById('procoreModal').addEventListener('show.bs.modal', () => {
+       expReset();
+       expLoadModeInfo();
+     });
+     
+     function expLoadModeInfo() {
+       // Quick dry run with no dates to check connection status + get mode
+       fetch(PROCORE_EXPORT_URL, {
+         method:  'POST',
+         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+         body:    JSON.stringify({ dry_run: true }),
+       })
+       .then(r => r.json())
+       .then(data => {
+         if (data.success) {
+           const mode = data.mode || 'mock';
+           const badgeClass = mode === 'mock'       ? 'bg-secondary' :
+                              mode === 'sandbox'    ? 'bg-warning text-dark' : 'bg-success';
+           document.getElementById('exp-mode-badge').className = `badge ${badgeClass}`;
+           document.getElementById('exp-mode-badge').textContent =
+             `Active: ${mode.toUpperCase()}`;
+         } else {
+           // Not connected — show warning
+           document.getElementById('exp-step-form').querySelector('.row').classList.add('d-none');
+           document.getElementById('exp-step-form').querySelector('.form-check').classList.add('d-none');
+           document.getElementById('exp-not-connected-msg').textContent = data.error;
+           document.getElementById('exp-not-connected').classList.remove('d-none');
+           document.getElementById('exp-send-btn').disabled = true;
+           document.getElementById('exp-mode-badge').textContent = 'Not connected';
+         }
+       })
+       .catch(() => {
+         document.getElementById('exp-mode-badge').textContent = 'Unknown';
+       });
+     }
+     
+     // Update button label based on dry run toggle
+     document.getElementById('exp-dryrun').addEventListener('change', function() {
+       document.getElementById('exp-send-btn').innerHTML = this.checked
+         ? '<i class="bi bi-eye me-1"></i>Preview export'
+         : '<i class="bi bi-upload me-1"></i>Send to Procore';
+     });
+     
+     async function runProcoreExport() {
+       const isDryRun = document.getElementById('exp-dryrun').checked;
+       const dateFrom = document.getElementById('exp-from').value || null;
+       const dateTo   = document.getElementById('exp-to').value   || null;
+     
+       document.getElementById('exp-error').classList.add('d-none');
+     
+       // Show progress
+       document.getElementById('exp-step-form').classList.add('d-none');
+       document.getElementById('exp-step-result').classList.add('d-none');
+       document.getElementById('exp-step-progress').classList.remove('d-none');
+       document.getElementById('exp-footer').classList.add('d-none');
+       document.getElementById('exp-progress-msg').textContent = isDryRun
+         ? 'Counting records…'
+         : 'Sending to Procore…';
+     
+       try {
+         const r = await fetch(PROCORE_EXPORT_URL, {
+           method:  'POST',
+           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+           body:    JSON.stringify({ dry_run: isDryRun, date_from: dateFrom, date_to: dateTo }),
+         });
+         const data = await r.json();
+     
+         document.getElementById('exp-step-progress').classList.add('d-none');
+     
+         if (!data.success) {
+           document.getElementById('exp-step-form').classList.remove('d-none');
+           document.getElementById('exp-footer').classList.remove('d-none');
+           const errEl = document.getElementById('exp-error');
+           errEl.textContent = data.error || 'Export failed.';
+           errEl.classList.remove('d-none');
+           return;
+         }
+     
+         expRenderResult(data, isDryRun);
+         document.getElementById('exp-step-result').classList.remove('d-none');
+         document.getElementById('exp-footer').innerHTML =
+           '<button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>';
+         document.getElementById('exp-footer').classList.remove('d-none');
+     
+       } catch {
+         document.getElementById('exp-step-progress').classList.add('d-none');
+         document.getElementById('exp-step-form').classList.remove('d-none');
+         document.getElementById('exp-footer').classList.remove('d-none');
+         const errEl = document.getElementById('exp-error');
+         errEl.textContent = 'Network error — please try again.';
+         errEl.classList.remove('d-none');
+       }
+     }
+     
+     function expRenderResult(data, isDryRun) {
+       const s    = data.summary;
+       const r    = data.result || {};
+       const mode = data.mode || 'mock';
+       const msgEl = document.getElementById('exp-result-msg');
+     
+       if (isDryRun) {
+         msgEl.className = 'alert alert-info small py-2 mb-3';
+         msgEl.innerHTML = `<i class="bi bi-eye me-1"></i>
+           Dry run complete — no data sent.
+           <span class="badge bg-secondary ms-1">${mode.toUpperCase()}</span>`;
+     
+         document.getElementById('exp-result-cards').innerHTML = [
+           { label: 'Daily logs',   value: s.message_count, color: 'primary' },
+           { label: 'Observations', value: s.alert_count,   color: 'warning' },
+           { label: 'Photos',       value: s.photo_count,   color: 'info'    },
+         ].map(c => `
+           <div class="col">
+             <div class="bg-light rounded p-2 text-center">
+               <div class="fw-semibold fs-5 text-${c.color}">${c.value}</div>
+               <div class="text-muted" style="font-size:11px">${c.label}</div>
+             </div>
+           </div>`).join('');
+     
+       } else {
+         const failed = (r.logs_failed || 0) + (r.observations_failed || 0) + (r.photos_failed || 0);
+         msgEl.className = `alert alert-${failed > 0 ? 'warning' : 'success'} small py-2 mb-3`;
+         msgEl.innerHTML = `<i class="bi bi-${failed > 0 ? 'exclamation-triangle' : 'check-circle'} me-1"></i>
+           Export complete for <strong>${data.project_name}</strong>.
+           <span class="badge bg-secondary ms-1">${mode.toUpperCase()}</span>`;
+     
+         document.getElementById('exp-result-cards').innerHTML = [
+           { label: 'Logs sent',    value: r.logs_sent    || 0, color: 'primary' },
+           { label: 'Logs failed',  value: r.logs_failed  || 0,
+             color: (r.logs_failed || 0) > 0 ? 'danger' : 'secondary' },
+           { label: 'Obs. sent',    value: r.observations_sent    || 0, color: 'warning' },
+           { label: 'Photos sent',  value: r.photos_sent  || 0, color: 'info'    },
+           { label: 'Photos failed',value: r.photos_failed || 0,
+             color: (r.photos_failed || 0) > 0 ? 'danger' : 'secondary' },
+         ].map(c => `
+           <div class="col">
+             <div class="bg-light rounded p-2 text-center">
+               <div class="fw-semibold fs-4 text-${c.color}">${c.value}</div>
+               <div class="text-muted" style="font-size:10px">${c.label}</div>
+             </div>
+           </div>`).join('');
+       }
+     }
+     
+     function expReset() {
+       document.getElementById('exp-step-form').classList.remove('d-none');
+       document.getElementById('exp-step-progress').classList.add('d-none');
+       document.getElementById('exp-step-result').classList.add('d-none');
+       document.getElementById('exp-not-connected').classList.add('d-none');
+       document.getElementById('exp-error').classList.add('d-none');
+       document.getElementById('exp-mode-badge').textContent = 'Loading…';
+       document.getElementById('exp-mode-badge').className = 'badge bg-secondary';
+       document.getElementById('exp-footer').innerHTML = `
+         <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+         <button class="btn btn-sm btn-primary" id="exp-send-btn" onclick="runProcoreExport()">
+           <i class="bi bi-eye me-1"></i>Preview export
+         </button>`;
+       document.getElementById('exp-footer').classList.remove('d-none');
+     
+       // Re-attach toggle listener after footer reset
+       const toggle = document.getElementById('exp-dryrun');
+       if (toggle) {
+         toggle.checked = true;
+         toggle.addEventListener('change', function() {
+           const btn = document.getElementById('exp-send-btn');
+           if (btn) btn.innerHTML = this.checked
+             ? '<i class="bi bi-eye me-1"></i>Preview export'
+             : '<i class="bi bi-upload me-1"></i>Send to Procore';
+         });
+       }
+     
+       // Show the date + toggle rows (may have been hidden if not connected)
+       document.querySelectorAll('#exp-step-form .row, #exp-step-form .form-check')
+         .forEach(el => el.classList.remove('d-none'));
+     
+       document.getElementById('exp-send-btn') &&
+         (document.getElementById('exp-send-btn').disabled = false);
+     }
+     
+     function getCsrfToken() {
+       return document.cookie.split(';')
+         .map(c => c.trim())
+         .find(c => c.startsWith('csrftoken='))
+         ?.split('=')[1] || '';
+     }
+     </script>
 
-    showProgress('Counting records to export...');
 
-    try {
-        const response = await fetch(PROCORE_EXPORT_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken':  getCsrfToken(),
-        },
-        body: JSON.stringify({
-            access_token:       token || 'dry-run',  // token not needed for dry run
-            company_id:         companyId || 'dry-run',
-            procore_project_id: projectId || 'dry-run',
-            date_from:          dateFrom,
-            date_to:            dateTo,
-            dry_run:            true,   // tells the view to stop before sending
-        }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-        showError(data.error || 'Could not build preview.');
-        return;
-        }
-
-        const s = data.summary;
-        showResultCards([
-        { label: 'Daily logs',   value: s.message_count,  color: 'primary' },
-        { label: 'Observations', value: s.alert_count,    color: 'warning' },
-        { label: 'Photos',       value: s.photo_count,    color: 'info'    },
-        ], 'Dry run complete. No data has been sent to Procore.', true);
-
-    } catch (err) {
-        showError('Could not build preview. Check your connection.');
-    }
-    }
-    
-    // ── UI state helpers ──────────────────────────────────────
-    function showProgress(msg) {
-        document.getElementById('procore-form').classList.add('d-none');
-        document.getElementById('procore-result').classList.add('d-none');
-        document.getElementById('procore-progress').classList.remove('d-none');
-        document.getElementById('procore-progress-msg').textContent = msg;
-        document.getElementById('procore-footer').classList.add('d-none');
-    }
-    
-    function showError(msg) {
-        document.getElementById('procore-progress').classList.add('d-none');
-        document.getElementById('procore-form').classList.remove('d-none');
-        document.getElementById('procore-footer').classList.remove('d-none');
-        const errorEl = document.getElementById('procore-error');
-        errorEl.textContent = msg;
-        errorEl.classList.remove('d-none');
-    }
-    
-    function showResult(data) {
-        const r = data.result;
-        showResultCards([
-        { label: 'Daily logs sent',    value: r.logs_sent,         color: 'primary' },
-        { label: 'Logs failed',        value: r.logs_failed,       color: r.logs_failed > 0 ? 'danger' : 'secondary' },
-        { label: 'Observations sent',  value: r.observations_sent, color: 'warning' },
-        { label: 'Photos sent',        value: r.photos_sent,       color: 'info'    },
-        { label: 'Photos failed',      value: r.photos_failed,     color: r.photos_failed > 0 ? 'danger' : 'secondary' },
-        ], `Export complete for <strong>${data.project_name}</strong>.`, false);
-    }
-    
-    function showResultCards(cards, message, isDry) {
-        document.getElementById('procore-progress').classList.add('d-none');
-        document.getElementById('procore-form').classList.add('d-none');
-    
-        document.getElementById('procore-result-msg').innerHTML =
-        (isDry ? '<i class="bi bi-eye me-1"></i>' : '<i class="bi bi-check-circle me-1"></i>') + message;
-    
-        const container = document.getElementById('procore-result-cards');
-        container.innerHTML = cards.map(c => `
-        <div class="col">
-            <div class="bg-light rounded p-2">
-            <div class="fw-semibold fs-5 text-${c.color}">${c.value}</div>
-            <div class="text-muted" style="font-size:11px">${c.label}</div>
-            </div>
-        </div>
-        `).join('');
-    
-        document.getElementById('procore-result').classList.remove('d-none');
-    
-        // Footer: just a Close button after result
-        document.getElementById('procore-footer').innerHTML =
-        '<button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>';
-        document.getElementById('procore-footer').classList.remove('d-none');
-    }
-    
-    function getCsrfToken() {
-        return document.cookie.split(';')
-        .map(c => c.trim())
-        .find(c => c.startsWith('csrftoken='))
-        ?.split('=')[1] || '';
-    }
-    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>

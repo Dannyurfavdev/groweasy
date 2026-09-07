@@ -35,6 +35,11 @@ urlpatterns = [
 
     #manage data sources for each project
     path('manage-data-sources/', views.manage_data_sources, name='manage_data_sources'),
+
+    #Import contacts from csv file
+    path("contacts/import/", views.import_contacts_csv, name="import_contacts_csv"),
+    path("contacts/template/", views.download_contacts_template, name="download_contacts_template"),
+
     
     path('sheet/<int:source_id>/', views.view_full_sheet, name='view_full_sheet'),
 
@@ -58,9 +63,48 @@ urlpatterns = [
     path("action-items/<int:pk>/delete/", views.action_item_delete, name="action_item_delete"),
 
     # --- Export Meeting Items to Procore ---
-    path("meetings/<int:pk>/procore-dry-run/", views.meeting_procore_dry_run, name="meeting_procore_dry_run"),
-    path("meetings/<int:pk>/procore-push/", views.meeting_procore_push, name="meeting_procore_push"),
+    path("projects/<int:pk>/procore-setup/",     views.procore_setup,            name="procore_setup"),
+    path("projects/<int:pk>/procore-connect/",   views.procore_oauth_redirect,   name="procore_oauth_redirect"),
+    path("projects/<int:pk>/procore-test/",      views.procore_test_connection,   name="procore_test_connection"),
+    path("procore/callback/",                    views.procore_oauth_callback,    name="procore_oauth_callback"),
+    path("meetings/<int:pk>/procore-dry-run/",   views.meeting_procore_dry_run,   name="meeting_procore_dry_run"),
+    path("meetings/<int:pk>/procore-push/",      views.meeting_procore_push,      name="meeting_procore_push"),
+
+    path("dev-tools/",        views.dev_tools,        name="dev_tools"),
+    path("dev-tools/action/", views.dev_tools_action, name="dev_tools_action"),
 
    
 ]
+
+from core.procore_mock_views import (
+    mock_procore_me,
+    mock_procore_project,
+    mock_procore_meeting,
+    mock_procore_action_item,
+    mock_procore_store,
+    mock_procore_daily_log,
+    mock_procore_observation,
+    mock_procore_image,
+)
+
+urlpatterns += [
+    path("mock-procore/rest/v1.0/me",
+         mock_procore_me,          name="mock_procore_me"),
+    path("mock-procore/rest/v1.0/projects/<str:project_id>",
+         mock_procore_project,     name="mock_procore_project"),
+    path("mock-procore/rest/v1.0/projects/<str:project_id>/meetings",
+         mock_procore_meeting,     name="mock_procore_meeting"),
+    path("mock-procore/rest/v1.0/projects/<str:project_id>/meetings/<str:meeting_id>/meeting_action_items",
+         mock_procore_action_item, name="mock_procore_action_item"),
+    path("mock-procore/store/",
+         mock_procore_store,       name="mock_procore_store"),
+    path("mock-procore/rest/v1.0/projects/<str:project_id>/daily_logs",
+         mock_procore_daily_log,   name="mock_procore_daily_log"),
+    path("mock-procore/rest/v1.0/projects/<str:project_id>/observations/items",
+         mock_procore_observation, name="mock_procore_observation"),
+    path("mock-procore/rest/v1.0/projects/<str:project_id>/images",
+         mock_procore_image,       name="mock_procore_image"),
+]
+
+
 

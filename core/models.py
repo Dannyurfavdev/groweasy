@@ -345,4 +345,203 @@ class RiskSnapshot(models.Model):
         }.get(self.risk_level, 'secondary')
 
 
+"""
+REPLACE the ProcoreCredential model in core/models.py with this version.
+It adds access_token and refresh_token fields for OAuth storage.
+"""
 
+from cryptography.fernet import Fernet
+from django.conf import settings
+
+
+def _get_fernet():
+    key = settings.FERNET_KEYS[0]
+    if isinstance(key, str):
+        key = key.encode()
+    return Fernet(key)
+
+
+class EncryptedField(models.TextField):
+    """
+    Encrypted text field compatible with Django 5.x.
+    Uses Fernet symmetric encryption via settings.FERNET_KEYS.
+    """
+
+    def from_db_value(self, value, expression, connection):
+        if not value:
+            return value
+        try:
+            return _get_fernet().decrypt(value.encode()).decode()
+        except Exception:
+            return value  # Return as-is if decryption fails
+
+    def get_prep_value(self, value):
+        if not value:
+            return value
+        return _get_fernet().encrypt(value.encode()).decode()
+
+
+class ProcoreCredential(models.Model):
+    """
+    Stores Procore OAuth credentials per GrowEasy project.
+    All sensitive fields encrypted at rest via EncryptedField.
+
+    Supports two auth flows:
+    - Authorization Code (preferred) — tokens stored after OAuth redirect
+    - Client Credentials (fallback) — for service accounts
+
+    One credential record per GrowEasy project.
+    Sandbox/production toggle per project.
+    """
+
+    class Environment(models.TextChoices):
+        SANDBOX    = "sandbox",    "Sandbox (Testing)"
+        PRODUCTION = "production", "Production (Live)"
+
+    project = models.OneToOneField(
+        "Project",
+        on_delete=models.CASCADE,
+        related_name="procore_credential",
+    )
+
+    # App credentials — encrypted
+    client_id     = EncryptedField()
+    client_secret = EncryptedField()
+
+    # OAuth tokens — encrypted, populated after authorization
+    access_token  = EncryptedField(blank=True, default='')
+    refresh_token = EncryptedField(blank=True, default='')
+
+    # Procore IDs
+    company_id         = models.CharField(max_length=50)
+    procore_project_id = models.CharField(max_length=50)
+
+    # Sandbox vs production toggle
+    environment = models.CharField(
+        max_length=20,
+        choices=Environment.choices,
+        default=Environment.SANDBOX,
+    )
+
+    # Connection status
+    is_connected = models.BooleanField(
+        default=False,
+        help_text="True after successful OAuth authorization"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Procore Credential"
+
+    def __str__(self):
+        status = "connected" if self.is_connected else "not connected"
+        return f"{self.project.name} → Procore ({self.environment}, {status})"
+
+    @property
+    def is_sandbox(self):
+        return self.environment == self.Environment.SANDBOX
+
+    @property
+    def token_url(self):
+        if self.is_sandbox:
+            return "https://login-sandbox.procore.com/oauth/token"
+        return "https://login.procore.com/oauth/token"
+
+    @property
+    def api_base_url(self):
+        if self.is_sandbox:
+            return "https://sandbox.procore.com/rest/v1.0"
+        return "https://api.procore.com/rest/v1.0"
+        
+
+"""
+Add this model to core/models.py
+
+After adding, run:
+    python manage.py makemigrations core
+    python manage.py migrate
+    
+Then create the initial row:
+    python manage.py shell -c "
+    from core.models import ProcoreMode
+    ProcoreMode.get()  # creates default row automatically
+    print('ProcoreMode initialized')
+    "
+"""
+
+
+class ProcoreMode(models.Model):
+    """
+    Singleton model — always exactly one row.
+    Controls which Procore environment GrowEasy pushes to.
+    Readable and writable at runtime from the dev tools panel.
+    No server restart needed when switching modes.
+    """
+
+    class Mode(models.TextChoices):
+        MOCK       = "mock",       "Mock (local testing)"
+        SANDBOX    = "sandbox",    "Sandbox (Procore testing)"
+        PRODUCTION = "production", "Production (live)"
+
+    mode = models.CharField(
+        max_length=20,
+        choices=Mode.choices,
+        default=Mode.MOCK,
+    )
+
+    # For mock mode — where mock endpoints are hosted
+    mock_base_url = models.CharField(
+        max_length=255,
+        default="http://localhost:8000/mock-procore",
+        help_text="Base URL for mock Procore endpoints",
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Procore Mode"
+
+    def __str__(self):
+        return f"Procore Mode: {self.mode}"
+
+    @classmethod
+    def get(cls):
+        """Returns the singleton row, creating it if it doesn't exist."""
+        obj, _ = cls.objects.get_or_create(
+            pk=1,
+            defaults={"mode": cls.Mode.MOCK},
+        )
+        return obj
+
+    @property
+    def is_mock(self):
+        return self.mode == self.Mode.MOCK
+
+    @property
+    def is_sandbox(self):
+        return self.mode == self.Mode.SANDBOX
+
+    @property
+    def is_production(self):
+        return self.mode == self.Mode.PRODUCTION
+
+    def get_base_url(self, credential=None) -> str:
+        """
+        Returns the API base URL for the current mode.
+        credential: ProcoreCredential — used for sandbox/production URL.
+        """
+        if self.is_mock:
+            return self.mock_base_url
+        if credential:
+            return credential.api_base_url
+        # Fallback
+        if self.is_sandbox:
+            return "https://sandbox.procore.com/rest/v1.0"
+        return "https://api.procore.com/rest/v1.0"

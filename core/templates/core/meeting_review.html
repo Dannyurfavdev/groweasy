@@ -42,13 +42,14 @@
           <i class="bi bi-check2-circle me-1"></i>Approved
         </span>
       {% endif %}
+        
       {% if meeting.status == "APPROVED" or meeting.status == "PUSHED" %}
-        <button class="btn btn-outline-primary px-4"
-                data-bs-toggle="modal"
-                data-bs-target="#procorePushModal">
-            <i class="bi bi-cloud-upload me-2"></i>Push to Procore
-        </button>
-        {% endif %}
+      <button class="btn btn-outline-primary px-4"
+              data-bs-toggle="modal"
+              data-bs-target="#procorePushModal">
+        <i class="bi bi-cloud-upload me-2"></i>Push to Procore
+      </button>
+      {% endif %}
     </div>
   </div>
 
@@ -258,437 +259,404 @@
     </div>
   </div>
  
- <!-- ── Procore Push Modal ──────────────────────────────────── -->
-    <div class="modal fade" id="procorePushModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content border-0 shadow">
-    
-        <!-- Header -->
-        <div class="modal-header border-0 pb-0">
-            <div>
-            <h5 class="modal-title fw-semibold mb-0">
-                <i class="bi bi-cloud-upload text-primary me-2"></i>Push to Procore
-            </h5>
-            <p class="text-muted small mb-0 mt-1">
-                Creates a draft meeting record in Procore with action items, decisions, and blockers.
-            </p>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-    
-        <!-- Body -->
-        <div class="modal-body pt-3">
-    
-            <!-- STEP 1: Credentials -->
-            <div id="pc-step-credentials">
-            <p class="small fw-semibold text-uppercase text-muted mb-3 ls-1">
-                Step 1 of 3 — Procore credentials
-            </p>
-    
-            <div class="mb-3">
-                <label class="form-label small fw-medium">Access token</label>
-                <input type="password" class="form-control form-control-sm"
-                        id="pc-token" placeholder="Paste your OAuth access token">
-                <div class="form-text">
-                Procore → Developer Tools → OAuth credentials.
-                </div>
-            </div>
-    
-            <div class="row g-3 mb-3">
-                <div class="col">
-                <label class="form-label small fw-medium">Company ID</label>
-                <input type="text" class="form-control form-control-sm"
-                        id="pc-company" placeholder="e.g. 12345">
-                </div>
-                <div class="col">
-                <label class="form-label small fw-medium">Procore project ID</label>
-                <input type="text" class="form-control form-control-sm"
-                        id="pc-project" placeholder="e.g. 67890">
-                </div>
-            </div>
-    
-            <div id="pc-creds-error" class="alert alert-danger small py-2 d-none"></div>
-            </div>
-    
-            <!-- STEP 2: Dry run preview -->
-            <div id="pc-step-preview" class="d-none">
-            <p class="small fw-semibold text-uppercase text-muted mb-3">
-                Step 2 of 3 — Review what will be pushed
-            </p>
-    
-            <!-- Summary cards -->
-            <div class="row g-2 mb-3" id="pc-summary-cards"></div>
-    
-            <!-- Action items table with assignee overrides -->
-            <div class="card border-0 bg-light mb-3">
-                <div class="card-header bg-transparent border-0 pb-0">
-                <h6 class="fw-semibold mb-0 small">
-                    <i class="bi bi-list-check me-1 text-primary"></i>Action Items
-                    <span class="text-muted fw-normal ms-1">— edit assignees before pushing</span>
-                </h6>
-                </div>
-                <div class="card-body pt-2 p-3">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0" id="pc-items-table">
-                    <thead class="table-light">
-                        <tr>
-                        <th style="width:50%">Task</th>
-                        <th>Assignee</th>
-                        <th>Due</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pc-items-body"></tbody>
-                    </table>
-                </div>
-                </div>
-            </div>
-    
-            <!-- Decisions preview -->
-            <div id="pc-decisions-block" class="mb-3 d-none">
-                <h6 class="fw-semibold small mb-2">
-                <i class="bi bi-check2-square me-1 text-success"></i>Decisions
-                <span class="text-muted fw-normal">(added as meeting notes)</span>
-                </h6>
-                <ul class="list-unstyled small text-muted mb-0" id="pc-decisions-list"></ul>
-            </div>
-    
-            <!-- Blockers preview -->
-            <div id="pc-blockers-block" class="mb-2 d-none">
-                <h6 class="fw-semibold small mb-2">
-                <i class="bi bi-exclamation-triangle me-1 text-danger"></i>Blockers
-                <span class="text-muted fw-normal">(added as meeting notes)</span>
-                </h6>
-                <ul class="list-unstyled small text-muted mb-0" id="pc-blockers-list"></ul>
-            </div>
-    
-            <div id="pc-preview-error" class="alert alert-danger small py-2 d-none"></div>
-            </div>
-    
-            <!-- STEP 3: Pushing progress -->
-            <div id="pc-step-pushing" class="d-none text-center py-4">
-            <div class="spinner-border spinner-border-sm text-primary mb-3" role="status"></div>
-            <p class="small text-muted mb-0" id="pc-push-msg">
-                Connecting to Procore…
-            </p>
-            </div>
-    
-            <!-- STEP 4: Result -->
-            <div id="pc-step-result" class="d-none">
-            <div class="text-center mb-4">
-                <div id="pc-result-icon" class="display-5 mb-2">✅</div>
-                <h5 class="fw-semibold" id="pc-result-title">Pushed to Procore</h5>
-                <p class="text-muted small" id="pc-result-subtitle"></p>
-            </div>
-    
-            <div class="row g-2 text-center mb-3" id="pc-result-cards"></div>
-    
-            <div id="pc-failures-block" class="d-none">
-                <p class="small fw-semibold text-danger mb-1">
-                <i class="bi bi-exclamation-triangle me-1"></i>Some items failed to push:
-                </p>
-                <ul class="list-unstyled small text-muted" id="pc-failures-list"></ul>
-            </div>
-    
-            <div class="text-center mt-3">
-                <a href="#" id="pc-procore-link" target="_blank"
-                    class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-box-arrow-up-right me-1"></i>Open in Procore
-                </a>
-            </div>
-            </div>
-    
-        </div>
-    
-        <!-- Footer -->
-        <div class="modal-footer border-0 pt-0" id="pc-footer">
-            <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal"
-                    id="pc-cancel-btn">Cancel</button>
-            <button class="btn btn-sm btn-outline-primary" id="pc-back-btn"
-                    onclick="pcGoBack()" style="display:none;">
-            <i class="bi bi-arrow-left me-1"></i>Back
-            </button>
-            <button class="btn btn-sm btn-primary" id="pc-next-btn"
-                    onclick="pcNext()">
-            <i class="bi bi-eye me-1"></i>Preview push
-            </button>
-        </div>
-    
-        </div>
-    </div>
-    </div>
-    
-    <script>
-    // ── State ──────────────────────────────────────────────────
-    const PC_MEETING_ID   = {{ meeting.id }};
-    const PC_DRY_RUN_URL  = `/meetings/${PC_MEETING_ID}/procore-dry-run/`;
-    const PC_PUSH_URL     = `/meetings/${PC_MEETING_ID}/procore-push/`;
-    const PC_CSRF         = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
-    
-    let pcStep       = 1;   // 1=creds, 2=preview, 3=pushing, 4=result
-    let pcSummary    = null; // dry run result
-    
-    // ── Step navigation ────────────────────────────────────────
-    function pcShowStep(n) {
-    pcStep = n;
-    document.getElementById('pc-step-credentials').classList.toggle('d-none', n !== 1);
-    document.getElementById('pc-step-preview').classList.toggle('d-none',     n !== 2);
-    document.getElementById('pc-step-pushing').classList.toggle('d-none',     n !== 3);
-    document.getElementById('pc-step-result').classList.toggle('d-none',      n !== 4);
-    
-    const nextBtn = document.getElementById('pc-next-btn');
-    const backBtn = document.getElementById('pc-back-btn');
-    
-    if (n === 1) {
-        nextBtn.style.display = '';
-        nextBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Preview push';
-        backBtn.style.display = 'none';
-    } else if (n === 2) {
-        nextBtn.style.display = '';
-        nextBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Push to Procore';
-        backBtn.style.display = '';
-    } else {
-        nextBtn.style.display = 'none';
-        backBtn.style.display = 'none';
-        if (n === 4) {
-        document.getElementById('pc-cancel-btn').textContent = 'Close';
-        }
-    }
-    }
-    
-    function pcGoBack() {
-    if (pcStep === 2) pcShowStep(1);
-    }
-    
-    function pcNext() {
-    if (pcStep === 1) pcRunDryRun();
-    else if (pcStep === 2) pcRunPush();
-    }
-    
-    // ── Credentials ────────────────────────────────────────────
-    function pcGetCreds() {
-    return {
-        access_token:       document.getElementById('pc-token').value.trim(),
-        company_id:         document.getElementById('pc-company').value.trim(),
-        procore_project_id: document.getElementById('pc-project').value.trim(),
-    };
-    }
-    
-    // ── Dry run ────────────────────────────────────────────────
-    function pcRunDryRun() {
-    const creds = pcGetCreds();
-    const errEl = document.getElementById('pc-creds-error');
-    errEl.classList.add('d-none');
-    
-    const missing = [];
-    if (!creds.access_token)       missing.push('Access token');
-    if (!creds.company_id)         missing.push('Company ID');
-    if (!creds.procore_project_id) missing.push('Procore project ID');
-    if (missing.length) {
-        errEl.textContent = `Please fill in: ${missing.join(', ')}`;
-        errEl.classList.remove('d-none');
-        return;
-    }
-    
-    const nextBtn = document.getElementById('pc-next-btn');
-    nextBtn.disabled = true;
-    nextBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading preview…';
-    
-    fetch(PC_DRY_RUN_URL, {
-        method:  'POST',
-        headers: { 'X-CSRFToken': PC_CSRF, 'Content-Type': 'application/json' },
-        body:    JSON.stringify(creds),
-    })
-    .then(r => r.json())
-    .then(data => {
-        nextBtn.disabled = false;
-        nextBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Preview push';
-    
-        if (!data.success) {
-        errEl.textContent = data.error || 'Preview failed.';
-        errEl.classList.remove('d-none');
-        return;
-        }
-    
-        pcSummary = data.summary;
-        pcRenderPreview(data.summary);
-        pcShowStep(2);
-    })
-    .catch(() => {
-        nextBtn.disabled = false;
-        nextBtn.innerHTML = '<i class="bi bi-eye me-1"></i>Preview push';
-        errEl.textContent = 'Network error. Please try again.';
-        errEl.classList.remove('d-none');
-    });
-    }
-    
-    function pcRenderPreview(s) {
-    // Summary cards
-    document.getElementById('pc-summary-cards').innerHTML = [
-        { label: 'Action Items', value: s.action_item_count, color: 'primary' },
-        { label: 'Assigned',     value: s.assigned_count,    color: 'success' },
-        { label: 'Unassigned',   value: s.unassigned_count,  color: s.unassigned_count > 0 ? 'warning' : 'secondary' },
-        { label: 'Decisions',    value: s.decision_count,    color: 'info'    },
-        { label: 'Blockers',     value: s.blocker_count,     color: 'danger'  },
-    ].map(c => `
-        <div class="col">
-        <div class="bg-light rounded-3 p-2 text-center border">
-            <div class="fw-bold fs-5 text-${c.color}">${c.value}</div>
-            <div class="text-muted" style="font-size:11px">${c.label}</div>
-        </div>
-        </div>
-    `).join('');
-    
-    // Action items table with editable assignee fields
-    const tbody = document.getElementById('pc-items-body');
-    tbody.innerHTML = s.action_items.map(item => {
-        const dueBadge = item.due_date
-        ? `<span class="badge bg-light text-dark border">${item.due_date}</span>`
-        : `<span class="text-muted">—</span>`;
-    
-        const assigneeVal = item.owner_name || '';
-        const assigneeInput = `
-        <input type="text"
-                class="form-control form-control-sm assignee-override"
-                data-item-id="${item.id}"
-                value="${assigneeVal}"
-                placeholder="${item.is_unassigned ? 'Type a name or leave blank' : ''}"
-                style="min-width:130px;">
-        `;
-    
-        const rowClass = item.is_unassigned ? 'table-warning' : '';
-    
-        return `
-        <tr class="${rowClass}">
-            <td class="small">${item.task}</td>
-            <td>${assigneeInput}</td>
-            <td>${dueBadge}</td>
-        </tr>
-        `;
-    }).join('');
-    
-    // Decisions
-    if (s.decisions && s.decisions.length > 0) {
-        document.getElementById('pc-decisions-block').classList.remove('d-none');
-        document.getElementById('pc-decisions-list').innerHTML = s.decisions
-        .map(d => `<li class="mb-1">• ${d.description}</li>`).join('');
-    }
-    
-    // Blockers
-    if (s.blockers && s.blockers.length > 0) {
-        document.getElementById('pc-blockers-block').classList.remove('d-none');
-        document.getElementById('pc-blockers-list').innerHTML = s.blockers
-        .map(b => `<li class="mb-1">• <span class="badge bg-${b.severity === 'HIGH' ? 'danger' : b.severity === 'MEDIUM' ? 'warning text-dark' : 'secondary'} me-1">${b.severity}</span>${b.description}</li>`)
-        .join('');
-    }
-    }
-    
-    // ── Real push ──────────────────────────────────────────────
-    function pcRunPush() {
-    const creds = pcGetCreds();
-    
-    // Collect PM-edited assignee names
-    const assigneeOverrides = {};
-    document.querySelectorAll('.assignee-override').forEach(input => {
-        assigneeOverrides[input.dataset.itemId] = input.value.trim();
-    });
-    
-    pcShowStep(3);
-    
-    const messages = [
-        'Connecting to Procore…',
-        'Creating meeting record…',
-        'Pushing action items…',
-        'Finalising…',
-    ];
-    let msgIdx = 0;
-    const msgEl = document.getElementById('pc-push-msg');
-    const msgTimer = setInterval(() => {
-        msgIdx = Math.min(msgIdx + 1, messages.length - 1);
-        msgEl.textContent = messages[msgIdx];
-    }, 2000);
-    
-    fetch(PC_PUSH_URL, {
-        method:  'POST',
-        headers: { 'X-CSRFToken': PC_CSRF, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-        ...creds,
-        assignee_overrides: assigneeOverrides,
-        }),
-    })
-    .then(r => r.json())
-    .then(data => {
-        clearInterval(msgTimer);
-    
-        if (!data.success) {
-        // Go back to preview with error
-        pcShowStep(2);
-        const errEl = document.getElementById('pc-preview-error');
-        errEl.textContent = data.error || 'Push failed. Check your credentials.';
-        errEl.classList.remove('d-none');
-        return;
-        }
-    
-        pcRenderResult(data);
-        pcShowStep(4);
-    })
-    .catch(() => {
-        clearInterval(msgTimer);
-        pcShowStep(2);
-        const errEl = document.getElementById('pc-preview-error');
-        errEl.textContent = 'Network error. Please try again.';
-        errEl.classList.remove('d-none');
-    });
-    }
-    
-    function pcRenderResult(data) {
-    document.getElementById('pc-result-title').textContent =
-        data.items_failed > 0 ? 'Pushed with some failures' : 'Successfully pushed to Procore';
-    document.getElementById('pc-result-icon').textContent =
-        data.items_failed > 0 ? '⚠️' : '✅';
-    document.getElementById('pc-result-subtitle').textContent =
-        `Meeting record created in Procore as a draft. Review and publish there.`;
-    
-    document.getElementById('pc-result-cards').innerHTML = [
-        { label: 'Items pushed',  value: data.items_pushed,  color: 'success' },
-        { label: 'Items failed',  value: data.items_failed,  color: data.items_failed > 0 ? 'danger' : 'secondary' },
-    ].map(c => `
-        <div class="col">
-        <div class="bg-light rounded-3 p-3 text-center border">
-            <div class="fw-bold fs-4 text-${c.color}">${c.value}</div>
-            <div class="text-muted small">${c.label}</div>
-        </div>
-        </div>
-    `).join('');
-    
-    if (data.failures && data.failures.length > 0) {
-        document.getElementById('pc-failures-block').classList.remove('d-none');
-        document.getElementById('pc-failures-list').innerHTML = data.failures
-        .map(f => `<li>• ${f.task} — <span class="text-danger">${f.error}</span></li>`)
-        .join('');
-    }   
-    
-    if (data.procore_meeting_url) {
-        const link = document.getElementById('pc-procore-link');
-        link.href = data.procore_meeting_url;
-        link.classList.remove('d-none');
-    }
-    }
-    
-    // Reset modal state when closed
-    document.getElementById('procorePushModal').addEventListener('hidden.bs.modal', () => {
-    pcShowStep(1);
-    pcSummary = null;
-    document.getElementById('pc-creds-error').classList.add('d-none');
+<!-- Procore Push Modal -->
+ 
+ <div class="modal fade" id="procorePushModal" tabindex="-1">
+   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+     <div class="modal-content border-0 shadow">
+ 
+       <div class="modal-header border-0 pb-0">
+         <div>
+           <h5 class="modal-title fw-semibold mb-0">
+             <i class="bi bi-cloud-upload text-primary me-2"></i>Push to Procore
+           </h5>
+           <p class="text-muted small mb-0 mt-1" id="pc-mode-label">
+             Loading…
+           </p>
+         </div>
+         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+       </div>
+ 
+       <div class="modal-body pt-3">
+ 
+         <!-- STEP 1: Preview -->
+         <div id="pc-step-preview">
+           <p class="small fw-semibold text-uppercase text-muted mb-3">
+             Step 1 of 2 — Review what will be pushed
+           </p>
+ 
+           <div id="pc-preview-loading" class="text-center py-3">
+             <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+             <span class="small text-muted">Building preview…</span>
+           </div>
+ 
+           <div id="pc-preview-content" class="d-none">
+             <!-- Summary cards -->
+             <div class="row g-2 mb-3" id="pc-summary-cards"></div>
+ 
+             <!-- Action items with editable assignees -->
+             <div class="card border-0 bg-light mb-3">
+               <div class="card-header bg-transparent border-0 pb-0">
+                 <h6 class="fw-semibold mb-0 small">
+                   <i class="bi bi-list-check me-1 text-primary"></i>Action Items
+                   <span class="text-muted fw-normal ms-1">
+                     — edit assignees before pushing
+                   </span>
+                 </h6>
+               </div>
+               <div class="card-body pt-2 p-3">
+                 <div class="table-responsive">
+                   <table class="table table-sm align-middle mb-0">
+                     <thead class="table-light">
+                       <tr>
+                         <th style="width:50%">Task</th>
+                         <th>Assignee</th>
+                         <th>Due</th>
+                       </tr>
+                     </thead>
+                     <tbody id="pc-items-body"></tbody>
+                   </table>
+                 </div>
+               </div>
+             </div>
+ 
+             <!-- Decisions -->
+             <div id="pc-decisions-block" class="mb-3 d-none">
+               <h6 class="fw-semibold small mb-2">
+                 <i class="bi bi-check2-square me-1 text-success"></i>Decisions
+                 <span class="text-muted fw-normal">(added as meeting notes)</span>
+               </h6>
+               <ul class="list-unstyled small text-muted mb-0" id="pc-decisions-list"></ul>
+             </div>
+ 
+             <!-- Blockers -->
+             <div id="pc-blockers-block" class="mb-2 d-none">
+               <h6 class="fw-semibold small mb-2">
+                 <i class="bi bi-exclamation-triangle me-1 text-danger"></i>Blockers
+                 <span class="text-muted fw-normal">(added as meeting notes)</span>
+               </h6>
+               <ul class="list-unstyled small text-muted mb-0" id="pc-blockers-list"></ul>
+             </div>
+           </div>
+ 
+           <!-- No credentials banner (sandbox/production only) -->
+           <div id="pc-no-creds-banner" class="d-none">
+             <div class="text-center py-4">
+               <i class="bi bi-key display-4 text-muted mb-3 d-block opacity-50"></i>
+               <h6 class="fw-semibold">Procore not connected</h6>
+               <p class="text-muted small mb-3" id="pc-no-creds-msg"></p>
+               <div class="d-flex gap-2 justify-content-center flex-wrap">
+                 <a href="/dev-tools/" class="btn btn-primary btn-sm">
+                   <i class="bi bi-tools me-1"></i>Switch to Mock mode
+                 </a>
+                 <a href="/projects/{{ meeting.project.id }}/procore-setup/"
+                    class="btn btn-outline-secondary btn-sm">
+                   <i class="bi bi-gear me-1"></i>Set up Procore
+                 </a>
+               </div>
+             </div>
+           </div>
+ 
+           <div id="pc-preview-error" class="alert alert-danger small py-2 d-none"></div>
+         </div>
+ 
+         <!-- STEP 2: Pushing -->
+         <div id="pc-step-pushing" class="d-none text-center py-4">
+           <div class="spinner-border spinner-border-sm text-primary mb-3" role="status"></div>
+           <p class="small text-muted mb-0" id="pc-push-msg">Connecting…</p>
+         </div>
+ 
+         <!-- STEP 3: Result -->
+         <div id="pc-step-result" class="d-none">
+           <div class="text-center mb-4">
+             <div id="pc-result-icon" class="display-5 mb-2">✅</div>
+             <h5 class="fw-semibold" id="pc-result-title">Pushed to Procore</h5>
+             <p class="text-muted small" id="pc-result-subtitle">
+               Meeting created as a draft. Review and publish in Procore.
+             </p>
+           </div>
+           <div class="row g-2 text-center mb-3" id="pc-result-cards"></div>
+           <div id="pc-failures-block" class="d-none">
+             <p class="small fw-semibold text-danger mb-1">
+               <i class="bi bi-exclamation-triangle me-1"></i>Some items failed:
+             </p>
+             <ul class="list-unstyled small text-muted" id="pc-failures-list"></ul>
+           </div>
+           <div class="text-center mt-3">
+             <a href="#" id="pc-procore-link" target="_blank"
+                class="btn btn-sm btn-outline-primary d-none">
+               <i class="bi bi-box-arrow-up-right me-1"></i>
+               <span id="pc-procore-link-label">Open in Procore</span>
+             </a>
+           </div>
+         </div>
+ 
+       </div>
+ 
+       <div class="modal-footer border-0 pt-0" id="pc-footer">
+         <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal"
+                 id="pc-cancel-btn">Cancel</button>
+         <button class="btn btn-sm btn-primary d-none" id="pc-push-btn"
+                 onclick="pcRunPush()">
+           <i class="bi bi-cloud-upload me-1"></i>Push to Procore
+         </button>
+       </div>
+ 
+     </div>
+   </div>
+ </div>
+ 
+ <script>
+   const PC_MEETING_ID  = {{ meeting.id }};
+   const PC_DRY_RUN_URL = `/meetings/${PC_MEETING_ID}/procore-dry-run/`;
+   const PC_PUSH_URL    = `/meetings/${PC_MEETING_ID}/procore-push/`;
+   const PC_CSRF        = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+ 
+   // Auto-load preview when modal opens
+   document.getElementById('procorePushModal').addEventListener('show.bs.modal', () => {
+     pcReset();
+     pcLoadPreview();
+   });
+ 
+   function pcLoadPreview() {
+     document.getElementById('pc-preview-loading').classList.remove('d-none');
+     document.getElementById('pc-preview-content').classList.add('d-none');
+     document.getElementById('pc-preview-error').classList.add('d-none');
+     document.getElementById('pc-no-creds-banner').classList.add('d-none');
+     document.getElementById('pc-push-btn').classList.add('d-none');
+ 
+     fetch(PC_DRY_RUN_URL, {
+       method:  'POST',
+       headers: { 'X-CSRFToken': PC_CSRF, 'Content-Type': 'application/json' },
+       body:    JSON.stringify({}),
+     })
+     .then(r => r.json())
+     .then(data => {
+       document.getElementById('pc-preview-loading').classList.add('d-none');
+ 
+       if (!data.success) {
+         // No credentials / not connected
+         if (data.error === 'no_credentials' || data.error === 'not_connected') {
+           document.getElementById('pc-no-creds-msg').textContent = data.message;
+           document.getElementById('pc-no-creds-banner').classList.remove('d-none');
+         } else {
+           const errEl = document.getElementById('pc-preview-error');
+           errEl.textContent = data.error || 'Could not load preview.';
+           errEl.classList.remove('d-none');
+         }
+         return;
+       }
+ 
+       // Set mode label
+       const env = data.summary.environment || 'mock';
+       const envBadge = env === 'mock'
+         ? '<span class="badge bg-secondary ms-1">MOCK</span>'
+         : env === 'sandbox'
+           ? '<span class="badge bg-warning text-dark ms-1">SANDBOX</span>'
+           : '<span class="badge bg-success ms-1">PRODUCTION</span>';
+       document.getElementById('pc-mode-label').innerHTML =
+         `Pushing to Procore ${envBadge} — review before confirming`;
+ 
+       pcRenderPreview(data.summary);
+       document.getElementById('pc-preview-content').classList.remove('d-none');
+       document.getElementById('pc-push-btn').classList.remove('d-none');
+     })
+     .catch(() => {
+       document.getElementById('pc-preview-loading').classList.add('d-none');
+       const errEl = document.getElementById('pc-preview-error');
+       errEl.textContent = 'Network error loading preview.';
+       errEl.classList.remove('d-none');
+     });
+   }
+ 
+   function pcRenderPreview(s) {
+     document.getElementById('pc-summary-cards').innerHTML = [
+       { label: 'Action Items', value: s.action_item_count, color: 'primary'   },
+       { label: 'Assigned',     value: s.assigned_count,    color: 'success'   },
+       { label: 'Unassigned',   value: s.unassigned_count,
+         color: s.unassigned_count > 0 ? 'warning' : 'secondary' },
+       { label: 'Decisions',    value: s.decision_count,    color: 'info'      },
+       { label: 'Blockers',     value: s.blocker_count,     color: 'danger'    },
+     ].map(c => `
+       <div class="col">
+         <div class="bg-light rounded-3 p-2 text-center border">
+           <div class="fw-bold fs-5 text-${c.color}">${c.value}</div>
+           <div class="text-muted" style="font-size:11px">${c.label}</div>
+         </div>
+       </div>
+     `).join('');
+ 
+     document.getElementById('pc-items-body').innerHTML = s.action_items.map(item => {
+       const due = item.due_date
+         ? `<span class="badge bg-light text-dark border">${item.due_date}</span>`
+         : `<span class="text-muted">—</span>`;
+       return `
+         <tr class="${item.is_unassigned ? 'table-warning' : ''}">
+           <td class="small">${item.task}</td>
+           <td>
+             <input type="text"
+                    class="form-control form-control-sm assignee-override"
+                    data-item-id="${item.id}"
+                    value="${item.owner_name || ''}"
+                    placeholder="${item.is_unassigned ? 'Type a name or leave blank' : ''}">
+           </td>
+           <td>${due}</td>
+         </tr>`;
+     }).join('');
+ 
+     if (s.decisions && s.decisions.length > 0) {
+       document.getElementById('pc-decisions-block').classList.remove('d-none');
+       document.getElementById('pc-decisions-list').innerHTML =
+         s.decisions.map(d => `<li class="mb-1">• ${d.description}</li>`).join('');
+     }
+ 
+     if (s.blockers && s.blockers.length > 0) {
+       document.getElementById('pc-blockers-block').classList.remove('d-none');
+       document.getElementById('pc-blockers-list').innerHTML = s.blockers.map(b => `
+         <li class="mb-1">
+           • <span class="badge ${
+             b.severity === 'HIGH'   ? 'bg-danger' :
+             b.severity === 'MEDIUM' ? 'bg-warning text-dark' : 'bg-secondary'
+           } me-1">${b.severity}</span>${b.description}
+         </li>`).join('');
+     }
+   }
+ 
+   function pcRunPush() {
+     const btn = document.getElementById('pc-push-btn');
+     btn.disabled = true;
+     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Pushing…';
+ 
+     // Collect PM-edited assignees
+     const assigneeOverrides = {};
+     document.querySelectorAll('.assignee-override').forEach(input => {
+       assigneeOverrides[input.dataset.itemId] = input.value.trim();
+     });
+ 
+     document.getElementById('pc-step-preview').classList.add('d-none');
+     document.getElementById('pc-step-pushing').classList.remove('d-none');
+     document.getElementById('pc-footer').classList.add('d-none');
+ 
+     const messages = [
+       'Connecting…',
+       'Creating meeting record…',
+       'Pushing action items…',
+       'Finalising…',
+     ];
+     let msgIdx = 0;
+     const msgEl    = document.getElementById('pc-push-msg');
+     const msgTimer = setInterval(() => {
+       msgIdx = Math.min(msgIdx + 1, messages.length - 1);
+       msgEl.textContent = messages[msgIdx];
+     }, 2000);
+ 
+     fetch(PC_PUSH_URL, {
+       method:  'POST',
+       headers: { 'X-CSRFToken': PC_CSRF, 'Content-Type': 'application/json' },
+       body:    JSON.stringify({ assignee_overrides: assigneeOverrides }),
+     })
+     .then(r => r.json())
+     .then(data => {
+       clearInterval(msgTimer);
+       document.getElementById('pc-step-pushing').classList.add('d-none');
+ 
+       if (!data.success) {
+         document.getElementById('pc-step-preview').classList.remove('d-none');
+         document.getElementById('pc-footer').classList.remove('d-none');
+         const errEl = document.getElementById('pc-preview-error');
+         errEl.textContent = data.error || 'Push failed.';
+         errEl.classList.remove('d-none');
+         btn.disabled = false;
+         btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Push to Procore';
+         return;
+       }
+ 
+       pcRenderResult(data);
+       document.getElementById('pc-step-result').classList.remove('d-none');
+       document.getElementById('pc-footer').classList.remove('d-none');
+       document.getElementById('pc-cancel-btn').textContent = 'Close';
+     })
+     .catch(() => {
+       clearInterval(msgTimer);
+       document.getElementById('pc-step-pushing').classList.add('d-none');
+       document.getElementById('pc-step-preview').classList.remove('d-none');
+       document.getElementById('pc-footer').classList.remove('d-none');
+       const errEl = document.getElementById('pc-preview-error');
+       errEl.textContent = 'Network error. Please try again.';
+       errEl.classList.remove('d-none');
+       btn.disabled = false;
+       btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Push to Procore';
+     });
+   }
+ 
+   function pcRenderResult(data) {
+     const isMock = data.environment === 'mock';
+ 
+     document.getElementById('pc-result-icon').textContent =
+       data.items_failed > 0 ? '⚠️' : '✅';
+     document.getElementById('pc-result-title').textContent =
+       data.items_failed > 0 ? 'Pushed with some failures' : 'Successfully pushed';
+     document.getElementById('pc-result-subtitle').textContent = isMock
+       ? 'Stored in mock — check Dev Tools to inspect the data.'
+       : 'Meeting created as a draft in Procore. Review and publish there.';
+ 
+     document.getElementById('pc-result-cards').innerHTML = [
+       { label: 'Items pushed', value: data.items_pushed,
+         color: 'success' },
+       { label: 'Items failed', value: data.items_failed,
+         color: data.items_failed > 0 ? 'danger' : 'secondary' },
+     ].map(c => `
+       <div class="col">
+         <div class="bg-light rounded-3 p-3 text-center border">
+           <div class="fw-bold fs-4 text-${c.color}">${c.value}</div>
+           <div class="text-muted small">${c.label}</div>
+         </div>
+       </div>`).join('');
+ 
+     if (data.failures && data.failures.length > 0) {
+       document.getElementById('pc-failures-block').classList.remove('d-none');
+       document.getElementById('pc-failures-list').innerHTML = data.failures
+         .map(f => `<li>• ${f.task} — <span class="text-danger">${f.error}</span></li>`)
+         .join('');
+     }
+ 
+     if (data.procore_meeting_url) {
+       const link = document.getElementById('pc-procore-link');
+       link.href = data.procore_meeting_url;
+       link.classList.remove('d-none');
+       document.getElementById('pc-procore-link-label').textContent = isMock
+         ? 'View mock store'
+         : 'Open in Procore';
+     }
+   }
+ 
+  function pcReset() {
+    document.getElementById('pc-step-preview').classList.remove('d-none');
+    document.getElementById('pc-step-pushing').classList.add('d-none');
+    document.getElementById('pc-step-result').classList.add('d-none');
     document.getElementById('pc-preview-error').classList.add('d-none');
-    document.getElementById('pc-cancel-btn').textContent = 'Cancel';
+    document.getElementById('pc-no-creds-banner').classList.add('d-none');
+    document.getElementById('pc-preview-loading').classList.remove('d-none');
+    document.getElementById('pc-preview-content').classList.add('d-none');
     document.getElementById('pc-decisions-block').classList.add('d-none');
     document.getElementById('pc-blockers-block').classList.add('d-none');
     document.getElementById('pc-failures-block').classList.add('d-none');
     document.getElementById('pc-procore-link').classList.add('d-none');
-    });
-    </script>
+    document.getElementById('pc-mode-label').textContent = 'Loading…';
+    document.getElementById('pc-cancel-btn').textContent = 'Cancel';
 
-
+    // Always rebuild footer completely — avoids stale button state
+    document.getElementById('pc-footer').classList.remove('d-none');
+    document.getElementById('pc-footer').innerHTML = `
+      <button class="btn btn-sm btn-outline-secondary"
+              data-bs-dismiss="modal" id="pc-cancel-btn">Cancel</button>
+      <button class="btn btn-sm btn-primary d-none" id="pc-push-btn"
+              onclick="pcRunPush()">
+        <i class="bi bi-cloud-upload me-1"></i>Push to Procore
+      </button>
+    `;
+  }
+ </script>
 
 
 

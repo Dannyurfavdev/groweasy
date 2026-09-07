@@ -1,217 +1,465 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Contacts - GrowEasy</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
-    <style>
-        body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 0; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .content-card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .project-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.875rem; font-weight: 600; }
-        .alert-custom { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: none; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="container">
-            <div class="d-flex justify-content-between align-items-center">
-                <h1 class="mb-0"><i class="bi bi-people-fill text-primary"></i> Manage Contacts</h1>
-                <a href="{% url 'dashboard' %}" class="btn btn-outline-primary">
-                    <i class="bi bi-arrow-left"></i> Back to Dashboard
-                </a>
-            </div>
+{% extends "core/base.html" %}
+{% block title %}Manage Contacts – GrowEasy{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <!-- Page header -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-people-fill text-primary me-2"></i>Manage Contacts
+      </h2>
+      <p class="text-muted mb-0">
+        Phone numbers mapped to projects for automatic WhatsApp routing.
+      </p>
+    </div>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+    </a>
+  </div>
+
+  <!-- Alert messages -->
+  <div id="alert-success" class="alert alert-success alert-dismissible d-none" role="alert">
+    <i class="bi bi-check-circle me-2"></i><span id="success-message"></span>
+    <button type="button" class="btn-close" onclick="hideAlerts()"></button>
+  </div>
+  <div id="alert-error" class="alert alert-danger alert-dismissible d-none" role="alert">
+    <i class="bi bi-exclamation-triangle me-2"></i><span id="error-message"></span>
+    <button type="button" class="btn-close" onclick="hideAlerts()"></button>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- LEFT: Add single + CSV import -->
+    <div class="col-lg-5">
+
+      <!-- Add single contact -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-transparent py-3">
+          <h5 class="fw-semibold mb-0">
+            <i class="bi bi-person-plus text-primary me-2"></i>Add Contact
+          </h5>
         </div>
+        <div class="card-body">
+          <form id="addContactForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add">
+
+            <div class="mb-3">
+              <label class="form-label small fw-medium">Project</label>
+              <select name="project_id" class="form-select form-select-sm" required>
+                {% for project in all_projects %}
+                  <option value="{{ project.id }}"
+                    {% if project.id == current_project.id %}selected{% endif %}>
+                    {{ project.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-medium">Phone Number</label>
+              <input type="text" name="phone_number" class="form-control form-control-sm"
+                     placeholder="+2347068392922" required pattern="\+?[0-9]{10,15}">
+              <div class="form-text">Include country code (e.g. +234…)</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-medium">Contact Name</label>
+              <input type="text" name="contact_name" class="form-control form-control-sm"
+                     placeholder="Mike Johnson" required>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label small fw-medium">Role <span class="text-muted">(optional)</span></label>
+              <input type="text" name="role" class="form-control form-control-sm"
+                     placeholder="Superintendent">
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100 btn-sm">
+              <i class="bi bi-plus-circle me-2"></i>Add Contact
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- CSV bulk import -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-transparent py-3 d-flex align-items-center justify-content-between">
+          <h5 class="fw-semibold mb-0">
+            <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Bulk Import via CSV
+          </h5>
+          <a href="{% url 'download_contacts_template' %}"
+             class="btn btn-outline-success btn-sm">
+            <i class="bi bi-download me-1"></i>Template
+          </a>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">
+            Download the template, fill it in, and upload it here.
+            Valid rows are imported; conflicts are reported — your existing
+            contacts are never overwritten.
+          </p>
+
+          <form id="csvImportForm" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <!-- Drop zone -->
+            <div class="upload-zone border border-2 border-dashed rounded-3 p-4 text-center mb-3"
+                 id="csv-drop-zone">
+              <i class="bi bi-file-earmark-arrow-up fs-2 text-muted d-block mb-2"></i>
+              <p class="small fw-semibold mb-1">Drop your CSV here</p>
+              <p class="small text-muted mb-3">or click to browse</p>
+              <input type="file" name="csv_file" id="csv-file-input"
+                     class="d-none" accept=".csv">
+              <button type="button" class="btn btn-outline-success btn-sm"
+                      onclick="document.getElementById('csv-file-input').click()">
+                Browse files
+              </button>
+              <div id="csv-file-selected" class="mt-2 d-none">
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                  <i class="bi bi-check-circle me-1"></i>
+                  <span id="csv-file-name"></span>
+                </span>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-success w-100 btn-sm" id="csv-submit-btn">
+              <i class="bi bi-cloud-upload me-2"></i>Import Contacts
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- How it works -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-2">
+            <i class="bi bi-info-circle text-info me-1"></i>How routing works
+          </h6>
+          <p class="small text-muted mb-2">
+            When someone sends a WhatsApp message, GrowEasy automatically
+            routes it to their project based on their phone number.
+          </p>
+          <p class="small text-muted mb-0">
+            Each number can only belong to <strong>one project</strong> at a time.
+          </p>
+        </div>
+      </div>
+
     </div>
 
-    <div class="container">
-        <!-- Alert Messages -->
-        <div id="alert-success" class="alert alert-success alert-custom">
-            <i class="bi bi-check-circle"></i> <span id="success-message"></span>
+    <!-- RIGHT: Contacts list -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent py-3 d-flex align-items-center justify-content-between">
+          <h5 class="fw-semibold mb-0">
+            <i class="bi bi-list-ul me-2"></i>All Contacts
+          </h5>
+          <span class="badge bg-primary-subtle text-primary">{{ all_contacts.count }}</span>
         </div>
-        <div id="alert-error" class="alert alert-danger alert-custom">
-            <i class="bi bi-exclamation-triangle"></i> <span id="error-message"></span>
-        </div>
-
-        <div class="row">
-            <!-- Add Contact Form -->
-            <div class="col-md-5">
-                <div class="content-card">
-                    <h3 class="mb-4"><i class="bi bi-person-plus"></i> Add Contact</h3>
-                    <form id="addContactForm">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="add">
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Project</label>
-                            <select name="project_id" class="form-select" required>
-                                {% for project in all_projects %}
-                                <option value="{{ project.id }}" {% if project.id == current_project.id %}selected{% endif %}>
-                                    {{ project.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Phone Number</label>
-                            <input type="text" name="phone_number" class="form-control" 
-                                   placeholder="+2347068392922" required
-                                   pattern="\+?[0-9]{10,15}">
-                            <small class="text-muted">Include country code (e.g., +234...)</small>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Contact Name</label>
-                            <input type="text" name="contact_name" class="form-control" 
-                                   placeholder="Mike Johnson" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Role (Optional)</label>
-                            <input type="text" name="role" class="form-control" 
-                                   placeholder="Superintendent">
-                        </div>
-
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-plus-circle"></i> Add Contact
-                        </button>
-                    </form>
-                </div>
-
-                <div class="content-card mt-3">
-                    <h5><i class="bi bi-info-circle text-info"></i> How It Works</h5>
-                    <p class="mb-0">When someone sends a WhatsApp message, GrowEasy automatically routes it to their assigned project based on their phone number.</p>
-                    <hr>
-                    <p class="text-muted mb-0"><strong>Your WhatsApp:</strong> +2347068392922</p>
-                </div>
+        <div class="card-body p-0">
+          {% if all_contacts %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-4 py-3">Name</th>
+                    <th class="py-3">Phone</th>
+                    <th class="py-3">Role</th>
+                    <th class="py-3">Project</th>
+                    <th class="py-3 text-end pe-3"></th>
+                  </tr>
+                </thead>
+                <tbody id="contacts-tbody">
+                  {% for contact in all_contacts %}
+                  <tr id="contact-row-{{ contact.id }}">
+                    <td class="ps-4 py-3 fw-semibold">{{ contact.contact_name }}</td>
+                    <td class="py-3"><code class="small">{{ contact.phone_number }}</code></td>
+                    <td class="py-3 text-muted small">{{ contact.role|default:"—" }}</td>
+                    <td class="py-3">
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                        {{ contact.project.name }}
+                      </span>
+                    </td>
+                    <td class="py-3 text-end pe-3">
+                      <button class="btn btn-sm btn-outline-danger delete-btn"
+                              data-contact-id="{{ contact.id }}"
+                              data-name="{{ contact.contact_name }}">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
             </div>
-
-            <!-- Contacts List -->
-            <div class="col-md-7">
-                <div class="content-card">
-                    <h3 class="mb-4"><i class="bi bi-list-ul"></i> All Contacts ({{ all_contacts.count }})</h3>
-                    
-                    {% if all_contacts %}
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Phone</th>
-                                        <th>Role</th>
-                                        <th>Project</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for contact in all_contacts %}
-                                    <tr>
-                                        <td><strong>{{ contact.contact_name }}</strong></td>
-                                        <td><code>{{ contact.phone_number }}</code></td>
-                                        <td>{{ contact.role|default:"—" }}</td>
-                                        <td>
-                                            <span class="project-badge" style="background: #dbeafe; color: #1e40af;">
-                                                {{ contact.project.name }}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <button class="btn btn-sm btn-outline-danger delete-btn" 
-                                                    data-contact-id="{{ contact.id }}"
-                                                    data-name="{{ contact.contact_name }}">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-5">
-                            <i class="bi bi-inbox" style="font-size: 3rem; color: #cbd5e1;"></i>
-                            <p class="text-muted mt-3">No contacts yet. Add your first contact above!</p>
-                        </div>
-                    {% endif %}
-                </div>
+          {% else %}
+            <div class="text-center py-5 text-muted" id="empty-state">
+              <i class="bi bi-inbox display-5 d-block mb-3 opacity-25"></i>
+              <p class="mb-1">No contacts yet.</p>
+              <p class="small">Add your first contact or import via CSV.</p>
             </div>
+          {% endif %}
         </div>
+      </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Add Contact Form
-        document.getElementById('addContactForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const formData = new FormData(e.target);
-            
-            try {
-                const response = await fetch('{% url "manage_contacts" %}', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('success', data.message);
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    showAlert('error', data.message);
-                }
-            } catch (error) {
-                showAlert('error', 'Error adding contact: ' + error);
-            }
-        });
+  </div>
+</div>
 
-        // Delete Contact
-        document.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const contactId = e.currentTarget.dataset.contactId;
-                const contactName = e.currentTarget.dataset.name;
-                
-                if (!confirm(`Remove ${contactName}?`)) return;
-                
-                const formData = new FormData();
-                formData.append('action', 'delete');
-                formData.append('contact_id', contactId);
-                formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
-                
-                try {
-                    const response = await fetch('{% url "manage_contacts" %}', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        showAlert('success', data.message);
-                        setTimeout(() => location.reload(), 1000);
-                    } else {
-                        showAlert('error', data.message);
-                    }
-                } catch (error) {
-                    showAlert('error', 'Error deleting contact: ' + error);
-                }
-            });
-        });
+<!-- CSV Import Results Modal -->
+<div class="modal fade" id="csvResultModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-semibold" id="csv-result-title">Import complete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-0">
 
-        function showAlert(type, message) {
-            const alertEl = document.getElementById(`alert-${type}`);
-            const messageEl = document.getElementById(`${type}-message`);
-            
-            messageEl.textContent = message;
-            alertEl.style.display = 'block';
-            
-            setTimeout(() => {
-                alertEl.style.display = 'none';
-            }, 5000);
+        <!-- Summary row -->
+        <div class="row g-2 mb-4" id="csv-result-cards"></div>
+
+        <!-- Skipped -->
+        <div id="csv-skipped-block" class="d-none mb-3">
+          <h6 class="small fw-semibold text-warning mb-2">
+            <i class="bi bi-skip-forward me-1"></i>Skipped (conflicts)
+          </h6>
+          <ul class="list-unstyled small mb-0" id="csv-skipped-list"></ul>
+        </div>
+
+        <!-- Errors -->
+        <div id="csv-errors-block" class="d-none">
+          <h6 class="small fw-semibold text-danger mb-2">
+            <i class="bi bi-x-circle me-1"></i>Errors (invalid rows)
+          </h6>
+          <ul class="list-unstyled small mb-0" id="csv-errors-list"></ul>
+        </div>
+
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-sm btn-primary" data-bs-dismiss="modal"
+                onclick="location.reload()">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .upload-zone {
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .upload-zone:hover,
+  .upload-zone.drag-over {
+    background: rgba(var(--bs-success-rgb), 0.04);
+    border-color: var(--bs-success) !important;
+  }
+</style>
+
+<script>
+  const CSRF = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+  // ── Alerts ─────────────────────────────────────────────
+  function showAlert(type, message) {
+    hideAlerts();
+    const el  = document.getElementById(`alert-${type}`);
+    const msg = document.getElementById(`${type}-message`);
+    msg.textContent = message;
+    el.classList.remove('d-none');
+    if (type === 'success') {
+      setTimeout(hideAlerts, 5000);
+    }
+  }
+
+  function hideAlerts() {
+    document.getElementById('alert-success').classList.add('d-none');
+    document.getElementById('alert-error').classList.add('d-none');
+  }
+
+  // ── Add single contact ─────────────────────────────────
+  document.getElementById('addContactForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Adding…';
+
+    try {
+      const response = await fetch('{% url "manage_contacts" %}', {
+        method: 'POST',
+        body:   new FormData(e.target),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showAlert('success', data.message);
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showAlert('error', data.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plus-circle me-2"></i>Add Contact';
+      }
+    } catch (err) {
+      showAlert('error', 'Network error — please try again.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-plus-circle me-2"></i>Add Contact';
+    }
+  });
+
+  // ── Delete contact ─────────────────────────────────────
+  document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      const id   = e.currentTarget.dataset.contactId;
+      const name = e.currentTarget.dataset.name;
+      if (!confirm(`Remove ${name}?`)) return;
+
+      const fd = new FormData();
+      fd.append('action', 'delete');
+      fd.append('contact_id', id);
+      fd.append('csrfmiddlewaretoken', CSRF);
+
+      try {
+        const response = await fetch('{% url "manage_contacts" %}', {
+          method: 'POST', body: fd,
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          const row = document.getElementById(`contact-row-${id}`);
+          if (row) {
+            row.style.opacity = '0';
+            row.style.transition = 'opacity 0.2s';
+            setTimeout(() => row.remove(), 200);
+          }
+          showAlert('success', data.message);
+        } else {
+          showAlert('error', data.message);
         }
-    </script>
-</body>
-</html>
+      } catch (err) {
+        showAlert('error', 'Network error — please try again.');
+      }
+    });
+  });
+
+  // ── CSV file picker ────────────────────────────────────
+  const csvInput   = document.getElementById('csv-file-input');
+  const csvDropZone = document.getElementById('csv-drop-zone');
+
+  csvInput.addEventListener('change', () => {
+    const f = csvInput.files[0];
+    if (f) {
+      document.getElementById('csv-file-name').textContent = f.name;
+      document.getElementById('csv-file-selected').classList.remove('d-none');
+    }
+  });
+
+  csvDropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    csvDropZone.classList.add('drag-over');
+  });
+  csvDropZone.addEventListener('dragleave', () => {
+    csvDropZone.classList.remove('drag-over');
+  });
+  csvDropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    csvDropZone.classList.remove('drag-over');
+    const dt = new DataTransfer();
+    dt.items.add(e.dataTransfer.files[0]);
+    csvInput.files = dt.files;
+    csvInput.dispatchEvent(new Event('change'));
+  });
+
+  // ── CSV import submit ──────────────────────────────────
+  document.getElementById('csvImportForm').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    if (!csvInput.files.length) {
+      showAlert('error', 'Please select a CSV file first.');
+      return;
+    }
+
+    const btn = document.getElementById('csv-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Importing…';
+
+    const fd = new FormData();
+    fd.append('csv_file', csvInput.files[0]);
+    fd.append('csrfmiddlewaretoken', CSRF);
+
+    try {
+      const response = await fetch('{% url "import_contacts_csv" %}', {
+        method: 'POST', body: fd,
+      });
+      const data = await response.json();
+
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Import Contacts';
+
+      if (!data.success) {
+        showAlert('error', data.message);
+        return;
+      }
+
+      renderCsvResult(data);
+      new bootstrap.Modal(document.getElementById('csvResultModal')).show();
+
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Import Contacts';
+      showAlert('error', 'Network error — please try again.');
+    }
+  });
+
+  // ── CSV result modal ───────────────────────────────────
+  function renderCsvResult(data) {
+    // Title
+    document.getElementById('csv-result-title').textContent =
+      data.imported > 0
+        ? `Import complete — ${data.imported} contact${data.imported > 1 ? 's' : ''} added`
+        : 'Import finished — no new contacts added';
+
+    // Summary cards
+    document.getElementById('csv-result-cards').innerHTML = [
+      { label: 'Imported',  value: data.imported,        color: 'success' },
+      { label: 'Skipped',   value: data.skipped.length,  color: data.skipped.length  > 0 ? 'warning' : 'secondary' },
+      { label: 'Errors',    value: data.errors.length,   color: data.errors.length   > 0 ? 'danger'  : 'secondary' },
+      { label: 'Total rows',value: data.total,           color: 'primary' },
+    ].map(c => `
+      <div class="col-6">
+        <div class="bg-light rounded-3 p-3 text-center border">
+          <div class="fw-bold fs-4 text-${c.color}">${c.value}</div>
+          <div class="text-muted small">${c.label}</div>
+        </div>
+      </div>
+    `).join('');
+
+    // Skipped
+    if (data.skipped.length > 0) {
+      document.getElementById('csv-skipped-block').classList.remove('d-none');
+      document.getElementById('csv-skipped-list').innerHTML = data.skipped
+        .map(s => `<li class="mb-1 text-muted">
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle me-1">
+            Row ${s.row}
+          </span>${s.reason}
+        </li>`)
+        .join('');
+    }
+
+    // Errors
+    if (data.errors.length > 0) {
+      document.getElementById('csv-errors-block').classList.remove('d-none');
+      document.getElementById('csv-errors-list').innerHTML = data.errors
+        .map(er => `<li class="mb-1 text-muted">
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle me-1">
+            Row ${er.row}
+          </span>${er.reason}
+        </li>`)
+        .join('');
+    }
+  }
+</script>
+{% endblock %}

@@ -1,27 +1,6 @@
 """
-core/procore_pusher.py
-
-Handles pushing a GrowEasy MeetingRecord to Procore via the Meetings API.
-
-DESIGNED FOR EASY ENDPOINT SWAPPING:
-Each company may use different Procore endpoints. The ProcoreMeetingPusher
-class is the default (Meetings API). To support a company using Daily Logs,
-subclass it and override the relevant push methods — the orchestrator
-(push_meeting_to_procore) accepts any pusher instance.
-
-Usage:
-    from core.procore_pusher import push_meeting_to_procore, dry_run_summary
-
-    # Dry run
-    summary = dry_run_summary(meeting)
-
-    # Real push
-    result = push_meeting_to_procore(
-        meeting=meeting,
-        access_token="...",
-        company_id="12345",
-        procore_project_id="67890",
-    )
+Final core/procore_pusher.py
+Replace your existing file entirely with this.
 """
 
 import logging
@@ -30,22 +9,10 @@ from datetime import date
 
 logger = logging.getLogger(__name__)
 
-#PROCORE_BASE = "https://api.procore.com/rest/v1.0"
+MOCK_API_PREFIX = "/rest/v1.0"
 
-PROCORE_BASE = "https://sandbox.procore.com/rest/v1.0"
-
-#PROCORE_BASE = "https://sandbox.procore.com/4282700/company/home"
-
-
-# ─────────────────────────────────────────────────────────
-# DRY RUN — no API calls
-# ─────────────────────────────────────────────────────────
 
 def dry_run_summary(meeting) -> dict:
-    """
-    Returns a preview of what would be pushed to Procore.
-    No API calls made. Called before real push.
-    """
     action_items = list(meeting.action_items.all().select_related("owner"))
     decisions    = list(meeting.decisions.all())
     blockers     = list(meeting.blockers.all())
@@ -54,94 +21,107 @@ def dry_run_summary(meeting) -> dict:
     unassigned = [i for i in action_items if not i.owner and not i.owner_raw_name]
 
     return {
-        "meeting_title":    meeting.title or "Untitled Meeting",
-        "meeting_date":     meeting.meeting_date.isoformat() if meeting.meeting_date else None,
+        "meeting_title":     meeting.title or "Untitled Meeting",
+        "meeting_date":      meeting.meeting_date.isoformat() if meeting.meeting_date else None,
         "action_item_count": len(action_items),
-        "assigned_count":   len(assigned),
-        "unassigned_count": len(unassigned),
-        "decision_count":   len(decisions),
-        "blocker_count":    len(blockers),
+        "assigned_count":    len(assigned),
+        "unassigned_count":  len(unassigned),
+        "decision_count":    len(decisions),
+        "blocker_count":     len(blockers),
         "action_items": [
             {
-                "id":          i.id,
-                "task":        i.task_description,
-                "owner_name":  i.owner.contact_name if i.owner else (i.owner_raw_name or ""),
-                "due_date":    i.due_date.isoformat() if i.due_date else None,
+                "id":            i.id,
+                "task":          i.task_description,
+                "owner_name":    i.owner.contact_name if i.owner else (i.owner_raw_name or ""),
+                "due_date":      i.due_date.isoformat() if i.due_date else None,
                 "is_unassigned": not i.owner and not i.owner_raw_name,
             }
             for i in action_items
         ],
-        "decisions": [
-            {"description": d.description}
-            for d in decisions
-        ],
-        "blockers": [
-            {"description": b.description, "severity": b.severity}
-            for b in blockers
-        ],
+        "decisions": [{"description": d.description} for d in decisions],
+        "blockers":  [{"description": b.description, "severity": b.severity} for b in blockers],
     }
 
 
-# ─────────────────────────────────────────────────────────
-# BASE PUSHER — Procore Meetings API
-# ─────────────────────────────────────────────────────────
-
 class ProcoreMeetingPusher:
-    """
-    Pushes a MeetingRecord to Procore using the Meetings API.
 
-    TO SWAP ENDPOINTS FOR A SPECIFIC COMPANY:
-    Subclass this and override push_action_item() or push_meeting().
-    Pass your subclass instance to push_meeting_to_procore().
+    def __init__(self, access_token: str, credential):
+        from core.models import ProcoreMode
 
-    Example for a company using a custom endpoint:
-        class AcmePusher(ProcoreMeetingPusher):
-            def push_action_item(self, item_data):
-                # POST to Acme's custom Procore setup
-                ...
-    """
-
-    def __init__(self, access_token: str, company_id: str, procore_project_id: str):
         self.access_token       = access_token
-        self.company_id         = company_id
-        self.procore_project_id = procore_project_id
+        self.credential         = credential
+        self.company_id         = credential.company_id
+        self.procore_project_id = credential.procore_project_id
+
+        # Read active mode from DB — no restart needed
+        self.procore_mode = ProcoreMode.get()
+        self.is_mock      = self.procore_mode.is_mock
+        self.base_url     = self.procore_mode.get_base_url(credential)
+
         self.headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type":  "application/json",
-            "Procore-Company-Id": str(company_id),
+            "Authorization":      f"Bearer {access_token}",
+            "Content-Type":       "application/json",
+            "Procore-Company-Id": str(credential.company_id),
         }
 
+        logger.info(
+            "ProcoreMeetingPusher → %s | base: %s",
+            self.procore_mode.mode.upper(),
+            self.base_url,
+        )
+
     def _url(self, path: str) -> str:
-        return f"{PROCORE_BASE_URL}{path}"
+        """
+        Builds full URL.
+        Mock endpoints include /rest/v1.0/ prefix in their path.
+        Real Procore endpoints use the base URL which already ends at /rest/v1.0.
+        """
+        if self.is_mock:
+            # base_url = http://localhost:8000/mock-procore
+            # path     = /projects/365573/meetings
+            # result   = http://localhost:8000/mock-procore/rest/v1.0/projects/365573/meetings
+            return f"{self.base_url}{MOCK_API_PREFIX}{path}"
+        else:
+            # base_url = https://sandbox.procore.com/rest/v1.0
+            # path     = /projects/365573/meetings
+            # result   = https://sandbox.procore.com/rest/v1.0/projects/365573/meetings
+            return f"{self.base_url}{path}"
 
     def verify_credentials(self) -> tuple[bool, str]:
-        """
-        Quick check that token + company + project are valid.
-        Returns (True, "") or (False, error_message).
-        """
-        url = self._url(f"/projects/{self.procore_project_id}")
+        me_url = self._url("/me")
         try:
-            r = requests.get(url, headers=self.headers, timeout=10)
-            if r.status_code == 200:
-                return True, ""
-            elif r.status_code == 401:
-                return False, "Invalid access token. Check your Procore credentials."
-            elif r.status_code == 403:
-                return False, "Access denied. You may not have permission for this project."
-            elif r.status_code == 404:
-                return False, f"Project ID {self.procore_project_id} not found in Procore."
-            else:
+            r = requests.get(me_url, headers=self.headers, timeout=10)
+            if r.status_code == 401:
+                return False, "Access token is invalid or expired."
+            if r.status_code not in (200, 201):
                 return False, f"Procore returned {r.status_code}: {r.text[:200]}"
         except requests.Timeout:
             return False, "Procore API timed out. Try again."
         except requests.ConnectionError:
             return False, "Could not reach Procore API. Check your connection."
 
+        project_url = self._url(f"/projects/{self.procore_project_id}")
+        try:
+            r = requests.get(
+                project_url,
+                headers=self.headers,
+                params={"company_id": self.company_id},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return True, ""
+            elif r.status_code == 403:
+                return False, "Access denied. Check your Procore permissions."
+            elif r.status_code == 404:
+                return False, f"Project ID {self.procore_project_id} not found."
+            else:
+                return False, f"Procore returned {r.status_code}: {r.text[:200]}"
+        except requests.Timeout:
+            return False, "Procore API timed out on project check."
+        except requests.ConnectionError:
+            return False, "Could not reach Procore API."
+
     def push_meeting(self, meeting) -> dict:
-        """
-        Creates a Meeting record in Procore.
-        Returns {"procore_meeting_id": str, "procore_meeting_url": str}
-        """
         url = self._url(f"/projects/{self.procore_project_id}/meetings")
 
         meeting_date = (
@@ -150,9 +130,7 @@ class ProcoreMeetingPusher:
             else date.today().isoformat()
         )
 
-        # Build description from decisions and blockers
         notes_parts = []
-
         decisions = list(meeting.decisions.all())
         if decisions:
             notes_parts.append("=== DECISIONS ===")
@@ -178,7 +156,7 @@ class ProcoreMeetingPusher:
                 "title":       meeting.title or "Site Meeting",
                 "date":        meeting_date,
                 "description": description,
-                "status":      "draft",   # Creates as draft in Procore
+                "status":      "draft",
             }
         }
 
@@ -186,15 +164,24 @@ class ProcoreMeetingPusher:
 
         if r.status_code not in (200, 201):
             raise Exception(
-                f"Failed to create Procore meeting: {r.status_code} — {r.text[:300]}"
+                f"Failed to create meeting: {r.status_code} — {r.text[:300]}"
             )
 
-        data = r.json()
-        meeting_id  = data.get("id") or data.get("meeting", {}).get("id")
-        meeting_url = data.get("url") or (
-            f"https://app.procore.com/{self.company_id}/project/"
-            f"{self.procore_project_id}/meetings/{meeting_id}"
-        )
+        data       = r.json()
+        meeting_id = data.get("id") or data.get("meeting", {}).get("id")
+
+        if self.is_mock:
+            meeting_url = f"{self.procore_mode.mock_base_url}/store/"
+        elif self.credential.is_sandbox:
+            meeting_url = (
+                f"https://sandbox.procore.com/{self.company_id}/project/"
+                f"{self.procore_project_id}/meetings/{meeting_id}"
+            )
+        else:
+            meeting_url = (
+                f"https://app.procore.com/{self.company_id}/project/"
+                f"{self.procore_project_id}/meetings/{meeting_id}"
+            )
 
         return {
             "procore_meeting_id":  str(meeting_id),
@@ -208,10 +195,6 @@ class ProcoreMeetingPusher:
         assignee_name:      str,
         due_date=None,
     ) -> dict:
-        """
-        Creates a single action item under a Procore meeting.
-        Returns {"procore_item_id": str}
-        """
         url = self._url(
             f"/projects/{self.procore_project_id}"
             f"/meetings/{procore_meeting_id}/meeting_action_items"
@@ -222,7 +205,6 @@ class ProcoreMeetingPusher:
                 "title":       task_description[:255],
                 "description": task_description,
                 "due_date":    due_date.isoformat() if due_date else None,
-                # Procore accepts assignee as a name string when no user ID available
                 "assignee":    assignee_name or None,
                 "status":      "initiated",
             }
@@ -236,57 +218,51 @@ class ProcoreMeetingPusher:
                 f"{r.status_code} — {r.text[:200]}"
             )
 
-        data = r.json()
+        data    = r.json()
         item_id = data.get("id") or data.get("meeting_action_item", {}).get("id")
         return {"procore_item_id": str(item_id)}
 
 
-# ─────────────────────────────────────────────────────────
-# ORCHESTRATOR — called by the view
-# ─────────────────────────────────────────────────────────
-
 def push_meeting_to_procore(
     meeting,
-    access_token:       str,
-    company_id:         str,
-    procore_project_id: str,
-    assignee_overrides: dict = None,  # {action_item_id: "name string"}
-    pusher_class=None,                # swap for company-specific pusher
+    credential,
+    assignee_overrides: dict = None,
+    pusher_class=None,
 ) -> dict:
-    """
-    Full push orchestrator.
-
-    assignee_overrides: dict mapping ActionItem.id → name string
-        PM-typed names for unassigned items from the pre-push UI.
-        e.g. {42: "Emmanuel Osei", 43: ""}
-
-    pusher_class: optional subclass of ProcoreMeetingPusher
-        Pass a custom class to use a different Procore endpoint structure.
-
-    Returns:
-    {
-        "success": bool,
-        "procore_meeting_id": str,
-        "procore_meeting_url": str,
-        "items_pushed": int,
-        "items_failed": int,
-        "failures": [{"task": str, "error": str}],
-    }
-    """
-    from core.models import MeetingRecord
+    from core.models import MeetingRecord, ProcoreMode
+    from core.procore_oauth import get_valid_token
 
     if pusher_class is None:
         pusher_class = ProcoreMeetingPusher
 
-    pusher = pusher_class(access_token, company_id, procore_project_id)
-    overrides = assignee_overrides or {}
+    overrides     = assignee_overrides or {}
+    procore_mode  = ProcoreMode.get()
 
-    # ── 1. Verify credentials ──────────────────────────
+    try:
+        access_token = get_valid_token(credential)
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+    pusher = pusher_class(access_token, credential)
+
     ok, err = pusher.verify_credentials()
+    if not ok and "expired" in err.lower() and credential.refresh_token:
+        try:
+            from core.procore_oauth import refresh_procore_token
+            access_token = refresh_procore_token(credential)
+            pusher = pusher_class(access_token, credential)
+            ok, err = pusher.verify_credentials()
+        except Exception:
+            credential.is_connected = False
+            credential.save(update_fields=["is_connected"])
+            return {
+                "success": False,
+                "error": "Your Procore session expired. Reconnect from the setup page.",
+            }
+
     if not ok:
         return {"success": False, "error": err}
 
-    # ── 2. Create meeting in Procore ───────────────────
     try:
         meeting_result = pusher.push_meeting(meeting)
     except Exception as exc:
@@ -296,15 +272,11 @@ def push_meeting_to_procore(
     procore_meeting_id  = meeting_result["procore_meeting_id"]
     procore_meeting_url = meeting_result["procore_meeting_url"]
 
-    # ── 3. Push action items ───────────────────────────
     items_pushed = 0
     items_failed = 0
     failures     = []
 
-    action_items = list(meeting.action_items.all().select_related("owner"))
-
-    for item in action_items:
-        # Resolve assignee name: override → contact_name → owner_raw_name → ""
+    for item in meeting.action_items.all().select_related("owner"):
         if str(item.id) in overrides:
             assignee_name = overrides[str(item.id)].strip()
         elif item.owner:
@@ -319,30 +291,26 @@ def push_meeting_to_procore(
                 assignee_name=assignee_name,
                 due_date=item.due_date,
             )
-            # Store Procore record ID on the action item
             item.procore_record_id = result["procore_item_id"]
             item.save(update_fields=["procore_record_id"])
             items_pushed += 1
-
         except Exception as exc:
-            logger.error(
-                "Failed to push action item %s: %s", item.id, exc
-            )
+            logger.error("Failed to push action item %s: %s", item.id, exc)
             failures.append({
                 "task":  item.task_description[:60],
                 "error": str(exc),
             })
             items_failed += 1
 
-    # ── 4. Update MeetingRecord status ─────────────────
     meeting.status = MeetingRecord.Status.PUSHED
     meeting.save(update_fields=["status"])
 
     return {
-        "success":            True,
+        "success":             True,
         "procore_meeting_id":  procore_meeting_id,
         "procore_meeting_url": procore_meeting_url,
         "items_pushed":        items_pushed,
         "items_failed":        items_failed,
         "failures":            failures,
+        "environment":         procore_mode.mode,
     }

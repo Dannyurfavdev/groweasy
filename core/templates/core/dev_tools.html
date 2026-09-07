@@ -1,0 +1,390 @@
+{% extends "core/base.html" %}
+{% block title %}Dev Tools – GrowEasy{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-tools text-primary me-2"></i>Developer Tools
+      </h2>
+      <p class="text-muted mb-0">
+        Switch Procore environments, inspect mock data, manage connections.
+      </p>
+    </div>
+    <span class="badge px-3 py-2
+      {% if procore_mode.is_mock %}bg-secondary
+      {% elif procore_mode.is_sandbox %}bg-warning-subtle text-warning border border-warning-subtle
+      {% else %}bg-success-subtle text-success border border-success-subtle{% endif %}">
+      Active: {{ procore_mode.mode|upper }}
+    </span>
+  </div>
+
+  <div id="dt-alert" class="d-none mb-3"></div>
+
+  <div class="row g-4">
+
+    <!-- LEFT: Procore mode switcher -->
+    <div class="col-lg-5">
+
+      <!-- Mode switcher -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-transparent py-3">
+          <h5 class="fw-semibold mb-0">
+            <i class="bi bi-arrow-left-right text-primary me-2"></i>Procore Mode
+          </h5>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">
+            Switches instantly — no server restart needed.
+            All pushes use the active mode.
+          </p>
+
+          <div class="d-flex flex-column gap-2">
+
+            <!-- Mock -->
+            <div class="mode-card p-3 rounded-3 border-2 border {% if procore_mode.is_mock %}border-primary bg-primary bg-opacity-10{% else %}border-light{% endif %}"
+                 id="mode-mock">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <div class="fw-semibold">
+                    <i class="bi bi-cpu me-2"></i>Mock
+                  </div>
+                  <div class="small text-muted">
+                    Pushes go to local mock endpoints. No Procore account needed.
+                  </div>
+                </div>
+                {% if procore_mode.is_mock %}
+                  <span class="badge bg-primary">Active</span>
+                {% else %}
+                  <button class="btn btn-sm btn-outline-primary"
+                          onclick="switchMode('mock')">
+                    Activate
+                  </button>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Sandbox -->
+            <div class="mode-card p-3 rounded-3 border-2 border {% if procore_mode.is_sandbox %}border-warning bg-warning bg-opacity-10{% else %}border-light{% endif %}"
+                 id="mode-sandbox">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <div class="fw-semibold">
+                    <i class="bi bi-cone-striped me-2"></i>Sandbox
+                  </div>
+                  <div class="small text-muted">
+                    Pushes go to Procore sandbox. Requires sandbox OAuth connection.
+                  </div>
+                </div>
+                {% if procore_mode.is_sandbox %}
+                  <span class="badge bg-warning text-dark">Active</span>
+                {% else %}
+                  <button class="btn btn-sm btn-outline-warning"
+                          onclick="switchMode('sandbox')">
+                    Activate
+                  </button>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Production -->
+            <div class="mode-card p-3 rounded-3 border-2 border {% if procore_mode.is_production %}border-success bg-success bg-opacity-10{% else %}border-light{% endif %}"
+                 id="mode-production">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <div class="fw-semibold">
+                    <i class="bi bi-check2-circle me-2"></i>Production
+                  </div>
+                  <div class="small text-muted">
+                    Pushes go to live Procore. Requires production OAuth connection.
+                  </div>
+                </div>
+                {% if procore_mode.is_production %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <button class="btn btn-sm btn-outline-success"
+                          onclick="switchMode('production')">
+                    Activate
+                  </button>
+                {% endif %}
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Mock URL setting -->
+          <div class="mt-4 pt-3 border-top">
+            <label class="form-label small fw-medium">Mock base URL</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="mock-url-input"
+                     value="{{ procore_mode.mock_base_url }}">
+              <button class="btn btn-outline-secondary"
+                      onclick="updateMockUrl()">Save</button>
+            </div>
+            <div class="form-text">
+              Where mock Procore endpoints are hosted.
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Project connections -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent py-3">
+          <h5 class="fw-semibold mb-0">
+            <i class="bi bi-folder2 me-2"></i>Project Connections
+          </h5>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for p in projects %}
+          <div class="list-group-item px-4 py-3 border-0 border-bottom">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <div>
+                <div class="fw-semibold small">{{ p.project.name }}</div>
+                {% if p.credential %}
+                  <div class="d-flex align-items-center gap-2 mt-1">
+                    <span class="badge
+                      {% if p.is_connected %}bg-success-subtle text-success border border-success-subtle
+                      {% else %}bg-warning-subtle text-warning border border-warning-subtle{% endif %}">
+                      {% if p.is_connected %}Connected{% else %}Not connected{% endif %}
+                    </span>
+                    <span class="badge bg-light text-dark border small">
+                      {{ p.environment }}
+                    </span>
+                  </div>
+                {% else %}
+                  <span class="badge bg-light text-muted border small">No credentials</span>
+                {% endif %}
+              </div>
+              {% if p.credential %}
+                <div class="d-flex gap-1 flex-wrap">
+                  <select class="form-select form-select-sm env-select"
+                          style="width: auto;"
+                          data-project-id="{{ p.project.id }}"
+                          onchange="switchEnv(this)">
+                    <option value="sandbox"    {% if p.environment == 'sandbox' %}selected{% endif %}>Sandbox</option>
+                    <option value="production" {% if p.environment == 'production' %}selected{% endif %}>Production</option>
+                  </select>
+                  <button class="btn btn-sm btn-outline-danger"
+                          onclick="resetConnection({{ p.project.id }}, this)"
+                          title="Reset OAuth connection">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                  </button>
+                  <a href="{% url 'procore_setup' p.project.id %}"
+                     class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-gear"></i>
+                  </a>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          {% empty %}
+            <div class="list-group-item px-4 py-3 text-muted small text-center">
+              No projects with Procore credentials.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: Mock store inspector -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent py-3 d-flex align-items-center justify-content-between">
+            <h5 class="fw-semibold mb-0">
+              <i class="bi bi-database me-2"></i>Mock Store
+              <span class="badge bg-secondary ms-2">{{ mock_meeting_count }} meeting{{ mock_meeting_count|pluralize }}</span>
+              <span class="badge bg-secondary ms-1">{{ mock_action_item_count }} action item{{ mock_action_item_count|pluralize }}</span>
+              <span class="badge bg-secondary ms-1">{{ mock_daily_log_count }} log{{ mock_daily_log_count|pluralize }}</span>
+              <span class="badge bg-secondary ms-1">{{ mock_observation_count }} obs</span>
+              <span class="badge bg-secondary ms-1">{{ mock_image_count }} photo{{ mock_image_count|pluralize }}</span>
+            </h5>
+            <button class="btn btn-sm btn-outline-danger" onclick="clearMockStore()">
+              <i class="bi bi-trash3 me-1"></i>Clear
+            </button>
+        </div>
+        <div class="card-body p-0">
+          {% if mock_meetings %}
+            {% for meeting in mock_meetings %}
+              <div class="px-4 py-3 border-bottom">
+                <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                  <div>
+                    <div class="fw-semibold">{{ meeting.title }}</div>
+                    <div class="small text-muted">
+                      <i class="bi bi-hash me-1"></i>{{ meeting.id }}
+                      {% if meeting.date %}
+                        <span class="ms-2">
+                          <i class="bi bi-calendar3 me-1"></i>{{ meeting.date }}
+                        </span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <span class="badge bg-light text-dark border">{{ meeting.status }}</span>
+                </div>
+                {% if meeting.action_items %}
+                  <div class="small text-muted">
+                    <i class="bi bi-list-check me-1"></i>
+                    {{ meeting.action_items|length }} action item{{ meeting.action_items|length|pluralize }} pushed
+                  </div>
+                {% endif %}
+                {% if meeting.description %}
+                  <details class="mt-2">
+                    <summary class="small text-muted" style="cursor:pointer;">
+                      View notes
+                    </summary>
+                    <pre class="small text-muted mt-1 mb-0"
+                         style="white-space:pre-wrap;font-size:0.8rem;">{{ meeting.description }}</pre>
+                  </details>
+                {% endif %}
+                
+              </div>
+            {% endfor %}
+          {% endif %}
+          {% if mock_daily_logs %}
+            <div class="px-4 py-2 border-bottom bg-light">
+                <small class="fw-semibold text-muted text-uppercase">Daily Logs ({{ mock_daily_log_count }})</small>
+            </div>
+            {% for log in mock_daily_logs %}
+                <div class="px-4 py-3 border-bottom">
+                <div class="small fw-semibold">{{ log.date|default:"No date" }}</div>
+                <div class="small text-muted">{{ log.notes|truncatechars:100 }}</div>
+                <code class="small text-muted">id: {{ log.id }}</code>
+                </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if mock_observations %}
+            <div class="px-4 py-2 border-bottom bg-light">
+                <small class="fw-semibold text-muted text-uppercase">Observations ({{ mock_observation_count }})</small>
+            </div>
+            {% for obs in mock_observations %}
+                <div class="px-4 py-3 border-bottom">
+                <div class="small fw-semibold">{{ obs.title|default:"Untitled" }}</div>
+                <div class="small text-muted">{{ obs.description|truncatechars:100 }}</div>
+                <span class="badge bg-light text-dark border small">{{ obs.type }}</span>
+                <code class="small text-muted ms-2">id: {{ obs.id }}</code>
+                </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if mock_images %}
+            <div class="px-4 py-2 border-bottom bg-light">
+                <small class="fw-semibold text-muted text-uppercase">Photos ({{ mock_image_count }})</small>
+            </div>
+            {% for img in mock_images %}
+                <div class="px-4 py-3 border-bottom">
+                <div class="small text-muted">{{ img.description|default:"No description" }}</div>
+                <code class="small text-muted">id: {{ img.id }}</code>
+                </div>
+            {% endfor %}
+            {% endif %}
+            {% if not mock_meetings and not mock_daily_logs and not mock_observations and not mock_images %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-inbox display-5 d-block mb-3 opacity-25"></i>
+                <p class="mb-1">Mock store is empty.</p>
+                <p class="small">Push a meeting or export WhatsApp data in Mock mode to see results here.</p>
+            </div>
+            {% endif %}
+        </div>
+        {% if mock_meetings or mock_daily_logs or mock_observations %}
+          <div class="card-footer bg-transparent text-center">
+            <a href="{% url 'mock_procore_store' %}" target="_blank"
+               class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-box-arrow-up-right me-1"></i>View full JSON
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+
+
+  </div>
+</div>
+
+<script>
+  const ACTION_URL = "{% url 'dev_tools_action' %}";
+  const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+  function showAlert(type, message) {
+    const el = document.getElementById('dt-alert');
+    el.className = `alert alert-${type} mb-3`;
+    el.textContent = message;
+    el.classList.remove('d-none');
+    if (type === 'success') setTimeout(() => el.classList.add('d-none'), 4000);
+  }
+
+  async function post(payload) {
+    const r = await fetch(ACTION_URL, {
+      method:  'POST',
+      headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    return r.json();
+  }
+
+  async function switchMode(mode) {
+    const data = await post({ action: 'switch_mode', mode });
+    if (data.success) {
+      showAlert('success', data.message);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showAlert('danger', data.error || 'Failed to switch mode.');
+    }
+  }
+
+  async function updateMockUrl() {
+    const url  = document.getElementById('mock-url-input').value.trim();
+    const data = await post({ action: 'update_mock_url', mock_base_url: url });
+    if (data.success) {
+      showAlert('success', data.message);
+    } else {
+      showAlert('danger', data.error || 'Failed to update URL.');
+    }
+  }
+
+  async function clearMockStore() {
+    if (!confirm('Clear all mock Procore data?')) return;
+    const data = await post({ action: 'clear_mock_store' });
+    if (data.success) {
+      showAlert('success', data.message);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showAlert('danger', data.error || 'Failed to clear store.');
+    }
+  }
+
+  async function resetConnection(projectId, btn) {
+    if (!confirm('Reset this project\'s Procore connection?')) return;
+    btn.disabled = true;
+    const data = await post({ action: 'reset_connection', project_id: projectId });
+    if (data.success) {
+      showAlert('success', data.message);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showAlert('danger', data.error || 'Reset failed.');
+      btn.disabled = false;
+    }
+  }
+
+  async function switchEnv(select) {
+    const projectId  = select.dataset.projectId;
+    const environment = select.value;
+    const data = await post({
+      action: 'switch_environment',
+      project_id: projectId,
+      environment,
+    });
+    if (data.success) {
+      showAlert('success', data.message);
+    } else {
+      showAlert('danger', data.error || 'Failed to switch environment.');
+      location.reload();
+    }
+  }
+</script>
+{% endblock %}

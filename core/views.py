@@ -7,7 +7,7 @@ from guardian.shortcuts import get_objects_for_user
 from django.core.mail import BadHeaderError, send_mail
 import json
 from django.conf import settings
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from .procore_export import build_project_export
 from .procore_client import send_project_export
 
@@ -20,6 +20,20 @@ from .ai_processor import (
 from .tasks import process_message_async
 from django.utils import timezone
 from datetime import timedelta
+
+import uuid
+from datetime import datetime
+from django.contrib.admin.views.decorators import staff_member_required
+from .procore_mock_views import (
+    _mock_store,
+    _check_auth,
+    _log_request,
+    mock_procore_me,
+    mock_procore_project,
+    mock_procore_meeting,
+    mock_procore_action_item,
+    mock_procore_store,
+)
 
 
 import logging
@@ -481,6 +495,7 @@ def manage_contacts(request):
     if request.method == 'POST':
         action = request.POST.get('action')
         
+        '''
         if action == 'add':
             phone = request.POST.get('phone_number', '').strip()
             name = request.POST.get('contact_name', '').strip()
@@ -517,6 +532,63 @@ def manage_contacts(request):
             
             except Exception as e:
                 return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+        '''
+
+        if action == 'add':
+            phone = request.POST.get('phone_number', '').strip()
+            name = request.POST.get('contact_name', '').strip()
+            role = request.POST.get('role', '').strip()
+            project_id = request.POST.get('project_id')
+
+            # Normalize phone number
+            if phone and not phone.startswith('+'):
+                phone = '+' + phone
+
+            try:
+                project = projects.get(id=project_id)
+
+                # Check if phone already exists anywhere
+                existing = ProjectContact.objects.filter(
+                    phone_number=phone
+                ).select_related('project').first()
+
+                if existing:
+                    # Same project — duplicate entry attempt
+                    if existing.project_id == int(project_id):
+                        return JsonResponse({
+                            'success': False,
+                            'message': (
+                                f"⚠️ {existing.contact_name} ({phone}) is already a contact "
+                                f"in {project.name}."
+                            )
+                        })
+                    # Different project — warn PM and point to which project owns this number
+                    else:
+                        return JsonResponse({
+                            'success': False,
+                            'message': (
+                                f"⚠️ This number ({phone}) is already assigned to "
+                                f"{existing.contact_name} in '{existing.project.name}'. "
+                                f"Each phone number can only belong to one project. "
+                                f"Remove them from '{existing.project.name}' first if you "
+                                f"want to reassign this number."
+                            )
+                        })
+
+                # No conflict — create
+                ProjectContact.objects.create(
+                    project=project,
+                    phone_number=phone,
+                    contact_name=name,
+                    role=role,
+                )
+                return JsonResponse({
+                    'success': True,
+                    'message': f"✅ {name} added to {project.name}."
+                })
+
+            except Exception as e:
+                return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
         
         elif action == 'delete':
             contact_id = request.POST.get('contact_id')
@@ -538,6 +610,199 @@ def manage_contacts(request):
     }
     
     return render(request, 'core/manage_contacts.html', context)
+
+
+"""
+=================================================================
+1. ADD THIS FUNCTION to core/views.py (standalone, not inside manage_contacts)
+   It handles the CSV template download.
+=================================================================
+"""
+
+@login_required
+def download_contacts_template(request):
+    """
+    Returns a pre-built CSV template the PM can fill in and re-upload.
+    """
+    import csv
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="groweasy_contacts_template.csv"'
+
+    writer = csv.writer(response)
+
+    # Header row
+    writer.writerow(['phone_number', 'contact_name', 'role', 'project_name'])
+
+    # Example rows so PM understands the format
+    writer.writerow(['+2347068392922', 'Mike Johnson', 'Superintendent', 'Downtown Commercial Office Building'])
+    writer.writerow(['+2348145414819', 'Sarah Chen',   'Site Supervisor', 'Harbor Mall'])
+    writer.writerow(['+2348031234567', 'Emmanuel Osei','Roofer',          'Airport Project'])
+
+    return response
+
+
+"""
+=================================================================
+2. ADD THIS FUNCTION to core/views.py
+   Handles the CSV upload and import logic.
+=================================================================
+"""
+
+@login_required
+@require_POST
+def import_contacts_csv(request):
+    """
+    Accepts a CSV file upload with columns:
+        phone_number, contact_name, role (optional), project_name
+
+    - Matches project_name to projects the user owns (case-insensitive)
+    - Skips rows where phone already exists (globally)
+    - Returns a JSON summary: imported, skipped, errors
+    """
+    import csv
+    import io
+    from .models import Project, ProjectContact
+
+    csv_file = request.FILES.get('csv_file')
+    if not csv_file:
+        return JsonResponse({'success': False, 'message': 'No file uploaded.'}, status=400)
+
+    if not csv_file.name.endswith('.csv'):
+        return JsonResponse({
+            'success': False,
+            'message': 'Only .csv files are accepted.'
+        }, status=400)
+
+    if csv_file.size > 2 * 1024 * 1024:  # 2MB cap
+        return JsonResponse({
+            'success': False,
+            'message': 'File too large. Maximum size is 2MB.'
+        }, status=400)
+
+    # Load projects the user owns
+    user_projects = {
+        p.name.strip().lower(): p
+        for p in Project.objects.filter(owner=request.user)
+    }
+
+    # Parse CSV
+    try:
+        decoded = csv_file.read().decode('utf-8-sig')  # utf-8-sig strips BOM from Excel CSVs
+        reader  = csv.DictReader(io.StringIO(decoded))
+    except Exception as exc:
+        return JsonResponse({
+            'success': False,
+            'message': f'Could not read CSV: {exc}'
+        }, status=400)
+
+    # Validate headers
+    required_headers = {'phone_number', 'contact_name', 'project_name'}
+    if not reader.fieldnames:
+        return JsonResponse({
+            'success': False,
+            'message': 'CSV appears to be empty.'
+        }, status=400)
+
+    actual_headers = {h.strip().lower() for h in reader.fieldnames}
+    missing = required_headers - actual_headers
+    if missing:
+        return JsonResponse({
+            'success': False,
+            'message': f'Missing columns: {", ".join(missing)}. '
+                       f'Download the template to see the correct format.'
+        }, status=400)
+
+    imported = 0
+    skipped  = []   # [{row, reason}]
+    errors   = []   # [{row, reason}]
+
+    for row_num, row in enumerate(reader, start=2):  # start=2 because row 1 is header
+        phone        = (row.get('phone_number') or '').strip()
+        contact_name = (row.get('contact_name') or '').strip()
+        role         = (row.get('role') or '').strip()
+        project_name = (row.get('project_name') or '').strip()
+
+        # ── Validate required fields ──────────────────────────
+        if not phone:
+            errors.append({'row': row_num, 'reason': 'Missing phone number'})
+            continue
+        if not contact_name:
+            errors.append({'row': row_num, 'reason': f'Missing contact name for {phone}'})
+            continue
+        if not project_name:
+            errors.append({'row': row_num, 'reason': f'Missing project name for {phone}'})
+            continue
+
+        # ── Normalize phone ───────────────────────────────────
+        if not phone.startswith('+'):
+            phone = '+' + phone
+
+        # ── Match project ─────────────────────────────────────
+        project = user_projects.get(project_name.lower())
+        if not project:
+            errors.append({
+                'row':    row_num,
+                'reason': f'Project "{project_name}" not found. '
+                          f'Check the name matches exactly.'
+            })
+            continue
+
+        # ── Check for existing phone globally ─────────────────
+        existing = ProjectContact.objects.filter(
+            phone_number=phone
+        ).select_related('project').first()
+
+        if existing:
+            if existing.project_id == project.id:
+                skipped.append({
+                    'row':    row_num,
+                    'reason': f'{contact_name} ({phone}) already exists in {project.name}'
+                })
+            else:
+                skipped.append({
+                    'row':    row_num,
+                    'reason': (
+                        f'{phone} is already assigned to {existing.contact_name} '
+                        f'in "{existing.project.name}". '
+                        f'Remove them there first to reassign.'
+                    )
+                })
+            continue
+
+        # ── Create contact ────────────────────────────────────
+        try:
+            ProjectContact.objects.create(
+                project=project,
+                phone_number=phone,
+                contact_name=contact_name,
+                role=role,
+            )
+            imported += 1
+        except Exception as exc:
+            errors.append({
+                'row':    row_num,
+                'reason': f'Could not save {contact_name}: {exc}'
+            })
+
+    # ── Build response summary ────────────────────────────────
+    total_rows = imported + len(skipped) + len(errors)
+
+    if imported == 0 and total_rows == 0:
+        return JsonResponse({
+            'success': False,
+            'message': 'CSV file has no data rows.'
+        })
+
+    return JsonResponse({
+        'success':  True,
+        'imported': imported,
+        'skipped':  skipped,
+        'errors':   errors,
+        'total':    total_rows,
+    })
+
 
 @login_required
 def export_data(request):
@@ -1392,126 +1657,85 @@ def risk_run_all(request):
         'message': f'Risk recalculated for {projects.count()} projects'
     })
 
-'''
-@login_required
-@require_POST
-def export_to_procore(request, project_id):
-    """
-    Called by the "Export to Procore" button.
-    Expects a POST with JSON body:
-    {
-        "access_token":       "...",   # customer's Procore OAuth token
-        "company_id":         "...",   # their Procore company ID
-        "procore_project_id": "...",   # their Procore project ID
-        "date_from":          "2026-01-01",  # optional
-        "date_to":            "2026-01-31"   # optional
-    }
-    """
-    from .models import Project
 
-    # ── Verify the project belongs to this user ───────────────
-    try:
-        project = Project.objects.get(id=project_id, owner=request.user)
-    except Project.DoesNotExist:
-        return JsonResponse({"error": "Project not found."}, status=404)
-
-    # ── Parse request body ────────────────────────────────────
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON in request body."}, status=400)
-
-    access_token       = body.get("access_token", "").strip()
-    company_id         = body.get("company_id", "").strip()
-    procore_project_id = body.get("procore_project_id", "").strip()
-    date_from          = body.get("date_from") or None
-    date_to            = body.get("date_to") or None
-
-    # ── Validate required credentials ─────────────────────────
-    missing = [f for f, v in {
-        "access_token":       access_token,
-        "company_id":         company_id,
-        "procore_project_id": procore_project_id,
-    }.items() if not v]
-
-    if missing:
-        return JsonResponse({
-            "error": f"Missing required fields: {', '.join(missing)}"
-        }, status=400)
-
-    # ── Build the export payload (pure data, no API calls) ────
-    try:
-        export_data = build_project_export(
-            project,
-            date_from=date_from,
-            date_to=date_to,
-        )
-    except Exception as e:
-        return JsonResponse({
-            "error": f"Failed to build export: {str(e)}"
-        }, status=500)
-
-    # ── Send to Procore ───────────────────────────────────────
-    try:
-        result = send_project_export(
-            export_data,
-            access_token=access_token,
-            company_id=company_id,
-            procore_project_id=procore_project_id,
-        )
-    except Exception as e:
-        return JsonResponse({
-            "error": f"Procore API error: {str(e)}"
-        }, status=502)
-
-    # ── Return result summary to the UI ───────────────────────
-    return JsonResponse({
-        "success":      True,
-        "project_name": export_data["project_name"],
-        "summary":      export_data["summary"],
-        "result":       result,
-    })
-'''
 
 @login_required
 @require_POST
 def export_to_procore(request, project_id):
-    from .models import Project
-
+    """
+    Exports WhatsApp messages (daily logs), alerts (observations),
+    and photos to Procore using the saved ProcoreCredential.
+ 
+    Active mode (mock/sandbox/production) is read from ProcoreMode.
+    No manual token entry needed — credentials come from project setup.
+ 
+    Supports dry_run=true for preview without sending.
+    """
+    from .models import Project, ProcoreCredential, ProcoreMode
+    from .procore_export import build_project_export
+    from .procore_client import send_project_export as _send
+ 
+    # ── Verify project ownership ──────────────────────────
     try:
         project = Project.objects.get(id=project_id, owner=request.user)
     except Project.DoesNotExist:
         return JsonResponse({"error": "Project not found."}, status=404)
-
+ 
+    # ── Parse request body ────────────────────────────────
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON in request body."}, status=400)
-
-    access_token       = body.get("access_token", "").strip()
-    company_id         = body.get("company_id", "").strip()
-    procore_project_id = body.get("procore_project_id", "").strip()
-    date_from          = body.get("date_from") or None
-    date_to            = body.get("date_to") or None
-    is_dry_run         = body.get("dry_run", False)  # ← NEW
-
-    # For real exports, all three credentials are required.
-    # For dry runs we allow placeholder values so the form
-    # doesn't block the preview when credentials aren't filled in.
-    if not is_dry_run:  # ← NEW — wrap the validation
-        missing = [f for f, v in {
-            "access_token":       access_token,
-            "company_id":         company_id,
-            "procore_project_id": procore_project_id,
-        }.items() if not v or v == 'dry-run']
-
-        if missing:
+ 
+    date_from  = body.get("date_from") or None
+    date_to    = body.get("date_to")   or None
+    is_dry_run = body.get("dry_run", False)
+ 
+    # ── Get active mode ───────────────────────────────────
+    procore_mode = ProcoreMode.get()
+ 
+    # ── Resolve credential ────────────────────────────────
+    if procore_mode.is_mock:
+        # Mock mode — use saved credential if available,
+        # otherwise use a lightweight stand-in
+        try:
+            credential = project.procore_credential
+        except ProcoreCredential.DoesNotExist:
+            class _MockCred:
+                company_id         = "mock-company"
+                procore_project_id = "mock-project"
+                environment        = "mock"
+                is_sandbox         = False
+                access_token       = "mock-token"
+                refresh_token      = ""
+                is_connected       = True
+                @property
+                def api_base_url(self):
+                    return procore_mode.mock_base_url
+            credential = _MockCred()
+    else:
+        # Sandbox / Production — require saved connected credential
+        try:
+            credential = project.procore_credential
+        except ProcoreCredential.DoesNotExist:
             return JsonResponse({
-                "error": f"Missing required fields: {', '.join(missing)}"
+                "error": (
+                    "No Procore credentials set up for this project. "
+                    "Go to Project Settings → Procore Setup, "
+                    "or switch to Mock mode in Dev Tools."
+                )
             }, status=400)
-
-    # Build the export payload — same for both dry run and real export.
-    # This queries the DB and applies date filters.
+ 
+        if not credential.is_connected:
+            return JsonResponse({
+                "error": (
+                    "Procore is not connected for this project. "
+                    "Go to Project Settings → Procore Setup to reconnect, "
+                    "or switch to Mock mode in Dev Tools."
+                )
+            }, status=400)
+ 
+    # ── Build export payload ──────────────────────────────
     try:
         export_data = build_project_export(
             project,
@@ -1519,41 +1743,33 @@ def export_to_procore(request, project_id):
             date_to=date_to,
         )
     except Exception as e:
-        return JsonResponse({
-            "error": f"Failed to build export: {str(e)}"
-        }, status=500)
-
-    # ── NEW: dry run stops here, returns counts only ──────────
+        return JsonResponse({"error": f"Failed to build export: {e}"}, status=500)
+ 
+    # ── Dry run — return counts only ──────────────────────
     if is_dry_run:
         return JsonResponse({
             "success":      True,
             "project_name": export_data["project_name"],
             "summary":      export_data["summary"],
+            "mode":         procore_mode.mode,
         })
-
-    # ── Everything below is unchanged ────────────────────────
+ 
+    # ── Real export ───────────────────────────────────────
     try:
-        result = send_project_export(
-            export_data,
-            access_token=access_token,
-            company_id=company_id,
-            procore_project_id=procore_project_id,
-        )
+        result = _send(export_data, credential=credential)
     except Exception as e:
-        return JsonResponse({
-            "error": f"Procore API error: {str(e)}"
-        }, status=502)
-
+        return JsonResponse({"error": f"Procore API error: {e}"}, status=502)
+ 
     return JsonResponse({
         "success":      True,
         "project_name": export_data["project_name"],
         "summary":      export_data["summary"],
         "result":       result,
+        "mode":         procore_mode.mode,
     })
 
-
 # ─────────────────────────────────────────────
-# UPLOAD MEETING CODE
+# UPLOAD MEETING
 # ─────────────────────────────────────────────
 
 @login_required
@@ -1727,46 +1943,6 @@ def meeting_approve(request, pk):
         "ownerless_count": ownerless_count,
     })
 
-'''
-@login_required
-@require_POST
-def meeting_approve(request, pk):
-    """
-    PM approves the full meeting. Fires WhatsApp notifications.
-    """
-    from core.models import MeetingRecord
-    from core.tasks import notify_action_item_owners
-
-    meeting = get_object_or_404(MeetingRecord, pk=pk)
-
-    if meeting.status != MeetingRecord.Status.DRAFT:
-        return JsonResponse({"error": "Only DRAFT meetings can be approved."}, status=400)
-
-    # ── Block if any action items have no resolved contact ──
-    unassigned = meeting.action_items.filter(owner__isnull=True)
-    if unassigned.exists():
-        unassigned_list = list(unassigned.values_list("owner_raw_name", flat=True))
-        unassigned_list = [
-            item.owner_raw_name.strip() if item.owner_raw_name else ""
-            for item in unassigned
-            ]
-        return JsonResponse({
-            "error": "unassigned_owners",
-            "message": "Some action items have unresolved owners. Add them as project contacts first.",
-            "unassigned": unassigned_list,
-        }, status=400)
-
-    meeting.status = MeetingRecord.Status.APPROVED
-    meeting.save(update_fields=["status"])
-
-    # Fire WhatsApp notifications async
-    notify_action_item_owners.delay(meeting.id)
-
-    return JsonResponse({
-        "status": "approved",
-        "notified": meeting.action_items.filter(owner__isnull=False).count(),
-    })
-'''
 
 @login_required
 @require_POST
@@ -1804,7 +1980,7 @@ def action_item_update(request, pk):
         item.owner = resolve_name_to_contact(data["owner_raw_name"], contacts)
 
     item.save()
-    return JsonResponse({"saved": True, "owner_resolved": item.owner.name if item.owner else None})
+    return JsonResponse({"saved": True, "owner_resolved": item.owner.contact_name if item.owner else None})
 
 
 @login_required
@@ -1845,109 +2021,458 @@ def meetings_list(request):
         "project_id": project_id,
     })
 
-"""
-Export Meeting To Procore
-"""
+
+# ─────────────────────────────────────────────────────────
+# SETUP PAGE
+# ─────────────────────────────────────────────────────────
+
+@login_required
+def procore_setup(request, pk):
+    """
+    GET  → renders credential setup form
+    POST → saves/updates ProcoreCredential
+    """
+    from core.models import Project, ProcoreCredential
+
+    project = get_object_or_404(Project, pk=pk, owner=request.user)
+
+    try:
+        credential = project.procore_credential
+    except ProcoreCredential.DoesNotExist:
+        credential = None
+
+    if request.method == "GET":
+        # Surface any OAuth result messages
+        connected   = request.GET.get('connected')
+        error       = request.GET.get('error')
+        return render(request, "core/procore_setup.html", {
+            "project":    project,
+            "credential": credential,
+            "connected":  connected,
+            "oauth_error": error,
+        })
+
+    # POST — save credentials
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    client_id          = body.get("client_id", "").strip()
+    client_secret      = body.get("client_secret", "").strip()
+    company_id         = body.get("company_id", "").strip()
+    procore_project_id = body.get("procore_project_id", "").strip()
+    environment        = body.get("environment", "sandbox").strip()
+
+    missing = []
+    if not client_id:          missing.append("Client ID")
+    if not client_secret:      missing.append("Client Secret")
+    if not company_id:         missing.append("Company ID")
+    if not procore_project_id: missing.append("Procore Project ID")
+
+    if missing:
+        return JsonResponse({
+            "error": f"Missing fields: {', '.join(missing)}"
+        }, status=400)
+
+    if environment not in ("sandbox", "production"):
+        environment = "sandbox"
+
+    if credential:
+        credential.client_id          = client_id
+        credential.client_secret      = client_secret
+        credential.company_id         = company_id
+        credential.procore_project_id = procore_project_id
+        credential.environment        = environment
+        # Reset connection status when credentials change
+        credential.is_connected  = False
+        credential.access_token  = ''
+        credential.refresh_token = ''
+        credential.save()
+    else:
+        ProcoreCredential.objects.create(
+            project=project,
+            client_id=client_id,
+            client_secret=client_secret,
+            company_id=company_id,
+            procore_project_id=procore_project_id,
+            environment=environment,
+        )
+
+    return JsonResponse({
+        "success":     True,
+        "environment": environment,
+        "message":     f"Credentials saved. Now click Connect to Procore to authorize.",
+    })
+
+
+# ─────────────────────────────────────────────────────────
+# OAUTH REDIRECT + CALLBACK
+# ─────────────────────────────────────────────────────────
+
+@login_required
+def procore_oauth_redirect(request, pk):
+    from core.procore_oauth import procore_oauth_redirect as _redirect
+    return _redirect(request, pk)
+
+
+@login_required
+def procore_oauth_callback(request):
+    from core.procore_oauth import procore_oauth_callback as _callback
+    return _callback(request)
+
+
+# ─────────────────────────────────────────────────────────
+# TEST CONNECTION
+# ─────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def procore_test_connection(request, pk):
+    """
+    Tests the stored OAuth tokens by verifying project access.
+    """
+    from core.models import Project, ProcoreCredential
+    from core.procore_oauth import get_valid_token
+    from core.procore_pusher import ProcoreMeetingPusher
+
+    project = get_object_or_404(Project, pk=pk, owner=request.user)
+
+    try:
+        credential = project.procore_credential
+    except ProcoreCredential.DoesNotExist:
+        return JsonResponse({
+            "error": "No Procore credentials saved yet."
+        }, status=400)
+
+    if not credential.access_token and not credential.refresh_token:
+        return JsonResponse({
+            "error": "not_connected",
+            "message": (
+                "Credentials saved but not yet authorized. "
+                "Click 'Connect to Procore' to complete setup."
+            )
+        }, status=400)
+
+    try:
+        token = get_valid_token(credential)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    pusher = ProcoreMeetingPusher(token, credential)
+    ok, err = pusher.verify_credentials()
+
+    if not ok:
+        return JsonResponse({"error": err}, status=400)
+
+    # Mark as connected
+    credential.is_connected = True
+    credential.save(update_fields=["is_connected"])
+
+    return JsonResponse({
+        "success":     True,
+        "environment": credential.environment,
+        "message":     (
+            f"Connected to Procore {credential.environment} successfully. "
+            f"Project ID {credential.procore_project_id} is accessible."
+        ),
+    })
+
+
+# ─────────────────────────────────────────────────────────
+# DRY RUN
+# ─────────────────────────────────────────────────────────
 
 @login_required
 @require_POST
 def meeting_procore_dry_run(request, pk):
-    """
-    Returns a preview of what would be pushed to Procore.
-    No API calls to Procore — just structures the data.
-    Also validates that credentials are non-empty.
-    """
-    from core.models import MeetingRecord
+    from core.models import MeetingRecord, ProcoreCredential, ProcoreMode
     from core.procore_pusher import dry_run_summary
-
+ 
     meeting = get_object_or_404(
-        MeetingRecord,
-        pk=pk,
-        project__owner=request.user,
+        MeetingRecord, pk=pk, project__owner=request.user,
     )
-
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    # Validate credentials are present (don't call API yet)
-    access_token       = body.get("access_token", "").strip()
-    company_id         = body.get("company_id", "").strip()
-    procore_project_id = body.get("procore_project_id", "").strip()
-
-    missing = []
-    if not access_token:       missing.append("Access token")
-    if not company_id:         missing.append("Company ID")
-    if not procore_project_id: missing.append("Procore project ID")
-
-    if missing:
-        return JsonResponse({
-            "error": f"Missing required fields: {', '.join(missing)}"
-        }, status=400)
-
+ 
+    procore_mode = ProcoreMode.get()
+ 
+    # In mock mode — skip credential checks entirely
+    if not procore_mode.is_mock:
+        try:
+            credential = meeting.project.procore_credential
+        except ProcoreCredential.DoesNotExist:
+            return JsonResponse({
+                "error": "no_credentials",
+                "message": (
+                    "No Procore credentials set up for this project. "
+                    "Go to Project Settings → Procore to connect, "
+                    "or switch to Mock mode in Dev Tools."
+                ),
+            }, status=400)
+ 
+        if not credential.is_connected:
+            return JsonResponse({
+                "error": "not_connected",
+                "message": (
+                    "Procore is not connected for this project. "
+                    "Go to Project Settings → Procore to connect, "
+                    "or switch to Mock mode in Dev Tools."
+                ),
+            }, status=400)
+ 
     summary = dry_run_summary(meeting)
+    summary["environment"] = procore_mode.mode
     return JsonResponse({"success": True, "summary": summary})
 
+
+# ─────────────────────────────────────────────────────────
+# REAL PUSH
+# ─────────────────────────────────────────────────────────
 
 @login_required
 @require_POST
 def meeting_procore_push(request, pk):
-    """
-    Performs the real push to Procore.
-    Accepts assignee_overrides: {action_item_id: "name"} for
-    PM-typed names on unassigned items.
-    """
-    from core.models import MeetingRecord
+    from core.models import MeetingRecord, ProcoreCredential, ProcoreMode
     from core.procore_pusher import push_meeting_to_procore
-
+ 
     meeting = get_object_or_404(
-        MeetingRecord,
-        pk=pk,
-        project__owner=request.user,
+        MeetingRecord, pk=pk, project__owner=request.user,
     )
-
+ 
     if meeting.status not in (
         MeetingRecord.Status.APPROVED,
-        MeetingRecord.Status.PUSHED,   # Allow re-push
+        MeetingRecord.Status.PUSHED,
     ):
         return JsonResponse({
             "error": "Meeting must be approved before pushing to Procore."
         }, status=400)
+ 
+    procore_mode = ProcoreMode.get()
+ 
+    # In mock mode — use a dummy credential object so the pusher
+    # has something to work with (it reads company_id etc.)
+    if procore_mode.is_mock:
+        try:
+            credential = meeting.project.procore_credential
+        except ProcoreCredential.DoesNotExist:
+            # Create a temporary in-memory credential for mock pushes
+            # so the pusher has the project IDs it needs for URL building
+            class MockCredential:
+                company_id         = "mock-company"
+                procore_project_id = "mock-project"
+                environment        = "mock"
+                is_sandbox         = False
+                access_token       = "mock-token"
+                refresh_token      = ""
+                is_connected       = True
+ 
+                @property
+                def api_base_url(self):
+                    return procore_mode.mock_base_url
+ 
+            credential = MockCredential()
+ 
+    else:
+        try:
+            credential = meeting.project.procore_credential
+        except ProcoreCredential.DoesNotExist:
+            return JsonResponse({
+                "error": "no_credentials",
+                "message": (
+                    "No Procore credentials set up for this project. "
+                    "Go to Project Settings → Procore to connect, "
+                    "or switch to Mock mode in Dev Tools."
+                ),
+            }, status=400)
+ 
+        if not credential.is_connected:
+            return JsonResponse({
+                "error": "not_connected",
+                "message": (
+                    "Procore is not connected. "
+                    "Go to Project Settings → Procore to reconnect, "
+                    "or switch to Mock mode in Dev Tools."
+                ),
+            }, status=400)
+ 
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+ 
+    assignee_overrides = body.get("assignee_overrides", {})
+ 
+    result = push_meeting_to_procore(
+        meeting=meeting,
+        credential=credential,
+        assignee_overrides=assignee_overrides,
+    )
+ 
+    if not result["success"]:
+        error_msg = result.get("error", "Push failed.")
+        # If token expired in sandbox/production, reset connection flag
+        if not procore_mode.is_mock and hasattr(credential, 'is_connected'):
+            if "expired" in error_msg.lower() or "reconnect" in error_msg.lower():
+                credential.is_connected = False
+                credential.save(update_fields=["is_connected"])
+ 
+        return JsonResponse({"error": error_msg}, status=400)
+ 
+    return JsonResponse(result)
+
+
+@staff_member_required
+def dev_tools(request):
+    from core.models import Project, ProcoreCredential, ProcoreMode
+    from core.procore_mock_views import _mock_store
+
+    procore_mode = ProcoreMode.get()
+
+    projects = []
+    for p in Project.objects.filter(owner=request.user):
+        try:
+            cred = p.procore_credential
+            projects.append({
+                "project":      p,
+                "credential":   cred,
+                "environment":  cred.environment,
+                "is_connected": cred.is_connected,
+            })
+        except ProcoreCredential.DoesNotExist:
+            projects.append({
+                "project":    p,
+                "credential": None,
+            })
+
+    mock_meetings = list(_mock_store["meetings"].values())
+
+    return render(request, "core/dev_tools.html", {
+        "procore_mode":             procore_mode,
+        "projects":                 projects,
+        "mock_meeting_count":       len(_mock_store.get("meetings", {})),
+        "mock_action_item_count":   len(_mock_store.get("action_items", {})),
+        "mock_daily_log_count":     len(_mock_store.get("daily_logs", {})),
+        "mock_observation_count":   len(_mock_store.get("observations", {})),
+        "mock_image_count":         len(_mock_store.get("images", {})),
+        "mock_meetings":            list(_mock_store.get("meetings", {}).values()),
+        "mock_daily_logs":          list(_mock_store.get("daily_logs", {}).values()),
+        "mock_observations":        list(_mock_store.get("observations", {}).values()),
+        "mock_images":              list(_mock_store.get("images", {}).values()),
+    })
+
+
+@staff_member_required
+@require_POST
+def dev_tools_action(request):
+    from core.models import ProcoreCredential, ProcoreMode
+    from core.procore_mock_views import _mock_store
 
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
-    access_token        = body.get("access_token", "").strip()
-    company_id          = body.get("company_id", "").strip()
-    procore_project_id  = body.get("procore_project_id", "").strip()
-    assignee_overrides  = body.get("assignee_overrides", {})  # {str(id): "name"}
+    action = body.get("action")
 
-    missing = []
-    if not access_token:       missing.append("Access token")
-    if not company_id:         missing.append("Company ID")
-    if not procore_project_id: missing.append("Procore project ID")
+    # ── Switch Procore mode ────────────────────────────────
+    if action == "switch_mode":
+        mode = body.get("mode")
+        if mode not in ("mock", "sandbox", "production"):
+            return JsonResponse({"error": "Invalid mode."}, status=400)
 
-    if missing:
+        procore_mode      = ProcoreMode.get()
+        procore_mode.mode = mode
+        procore_mode.updated_by = request.user
+        procore_mode.save(update_fields=["mode", "updated_by", "updated_at"])
+
+        logger.info("DEV TOOLS: Procore mode switched to %s by %s",
+                    mode, request.user.username)
+
         return JsonResponse({
-            "error": f"Missing required fields: {', '.join(missing)}"
-        }, status=400)
+            "success": True,
+            "mode":    mode,
+            "message": f"Procore mode switched to {mode.upper()}. "
+                       f"{'Mock endpoints will be used for all pushes.' if mode == 'mock' else 'Reconnect Procore on each project setup page.'}"
+        })
 
-    result = push_meeting_to_procore(
-        meeting=meeting,
-        access_token=access_token,
-        company_id=company_id,
-        procore_project_id=procore_project_id,
-        assignee_overrides=assignee_overrides,
-    )
+    # ── Update mock base URL ───────────────────────────────
+    elif action == "update_mock_url":
+        url = body.get("mock_base_url", "").strip()
+        if not url:
+            return JsonResponse({"error": "URL cannot be empty."}, status=400)
 
-    if not result["success"]:
-        return JsonResponse({"error": result.get("error", "Push failed.")}, status=400)
+        procore_mode = ProcoreMode.get()
+        procore_mode.mock_base_url = url
+        procore_mode.save(update_fields=["mock_base_url", "updated_at"])
 
-    return JsonResponse(result)
+        return JsonResponse({
+            "success": True,
+            "message": f"Mock base URL updated to {url}",
+        })
 
+    # ── Clear mock store ───────────────────────────────────
+    elif action == "clear_mock_store":
+        count_m = len(_mock_store["meetings"])
+        count_a = len(_mock_store["action_items"])
+        _mock_store["meetings"].clear()
+        _mock_store["action_items"].clear()
+
+        logger.info("DEV TOOLS: Mock store cleared (%s meetings, %s items)", count_m, count_a)
+
+        return JsonResponse({
+            "success": True,
+            "message": f"Cleared {count_m} meeting{'' if count_m == 1 else 's'} "
+                       f"and {count_a} action item{'' if count_a == 1 else 's'}.",
+        })
+
+    # ── Reset project Procore connection ───────────────────
+    elif action == "reset_connection":
+        project_id = body.get("project_id")
+        try:
+            cred = ProcoreCredential.objects.get(
+                project_id=project_id,
+                project__owner=request.user,
+            )
+            cred.is_connected  = False
+            cred.access_token  = ''
+            cred.refresh_token = ''
+            cred.save(update_fields=["is_connected", "access_token", "refresh_token"])
+            return JsonResponse({
+                "success": True,
+                "message": "Connection reset. Go to Procore Setup to reconnect.",
+            })
+        except ProcoreCredential.DoesNotExist:
+            return JsonResponse({"error": "No credentials found."}, status=404)
+
+    # ── Switch environment for a project ──────────────────
+    elif action == "switch_environment":
+        project_id  = body.get("project_id")
+        environment = body.get("environment")
+
+        if environment not in ("sandbox", "production"):
+            return JsonResponse({"error": "Invalid environment."}, status=400)
+
+        try:
+            cred = ProcoreCredential.objects.get(
+                project_id=project_id,
+                project__owner=request.user,
+            )
+            cred.environment   = environment
+            cred.is_connected  = False
+            cred.access_token  = ''
+            cred.refresh_token = ''
+            cred.save(update_fields=[
+                "environment", "is_connected",
+                "access_token", "refresh_token",
+            ])
+            return JsonResponse({
+                "success":     True,
+                "environment": environment,
+                "message":     f"Switched to {environment}. Reconnect on the setup page.",
+            })
+        except ProcoreCredential.DoesNotExist:
+            return JsonResponse({"error": "No credentials found."}, status=404)
+
+    return JsonResponse({"error": f"Unknown action: {action}"}, status=400)
 
 
 def home_view(request):

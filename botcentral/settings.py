@@ -32,6 +32,7 @@ TWILIO_ACCOUNT_SID = config('TWILIO_ACCOUNT_SID', default='')
 TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
 TWILIO_WHATSAPP_NUMBER = config('TWILIO_WHATSAPP_NUMBER', default='')
 
+FERNET_KEYS = [config("FERNET_KEYS")] #Gotten from `pip install django-cryptography` and running `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` once in the terminal to generate a key.
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -47,11 +48,14 @@ ALLOWED_HOSTS = [
     'groweasyanalytics.com',
     'www.groweasyanalytics.com',
     '72.61.103.193',
+    '127.0.0.1',
+    'localhost'
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     'https://groweasyanalytics.com',
     'https://www.groweasyanalytics.com',
+    'http://127.0.0.1',
 ]
 
 

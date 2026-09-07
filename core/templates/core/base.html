@@ -255,6 +255,12 @@
                     <a href="{% url 'risk_overview' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-activity me-1"></i>Risk
                     </a>
+                    <!-- Choose Mode For Procore -->
+                    {% if request.user.is_staff %}
+                        <a href="{% url 'dev_tools' %}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-tools me-1"></i>Dev Tools
+                        </a>
+                    {% endif %}
                     <a href="{% url 'logout' %}" class="btn btn-outline-danger btn-sm">
                         <i class="bi bi-box-arrow-right me-1"></i>Logout
                     </a>
